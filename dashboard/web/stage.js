@@ -4,14 +4,9 @@
    Decoration only: it shows the forecast and the weather, it never makes either. Not to scale. */
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import FIELDS from "./airfields.js";   // real runways, taxiways, aprons, terminals (OpenStreetMap), see dashboard/build_airfields.py
 
-// runways in the field frame (x = along the main runway heading): [lateral offset, length]; cross: [relative heading, along, lateral, length]
-const LAYOUT = {
-  ATL: { runways: [[-5.4, 16], [-3.9, 14], [-0.6, 17], [0.9, 14], [4.4, 13]], cross: [] },
-  DFW: { runways: [[-6.2, 16], [-4.8, 14], [-0.7, 17], [3.4, 17], [4.8, 14]], cross: [[-50, -1.5, -8.6, 12], [-50, 1.5, 8.6, 12]] },
-};
-const MAIN = 2;          // the aircraft lands on this runway
-const GROUND = -2.2, RR = 12.6, BOX = 17;
+const GROUND = -2.2, RR = 12.6, BOX = 17, FIT = 10.5;   // FIT: farthest runway end, inside the capacity ring
 
 export function createStage(cv, host, opts = {}) {
   const T = THREE, reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -43,11 +38,14 @@ export function createStage(cv, host, opts = {}) {
               hullDim: new T.MeshPhysicalMaterial({ color: 0x6f747a, metalness: 0.4, roughness: 0.5, envMapIntensity: 0.6, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
               fem: new T.MeshBasicMaterial({ color: 0x00205b, wireframe: true, transparent: true, opacity: 0.035, depthWrite: false }),
               intake: new T.MeshStandardMaterial({ color: 0x120c08, metalness: 0.2, roughness: 0.8, side: T.DoubleSide }),
-              asphalt: new T.MeshStandardMaterial({ color: 0x8796ab, roughness: 0.92, metalness: 0.05, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }) };
+              asphalt: new T.MeshStandardMaterial({ color: 0x8796ab, roughness: 0.92, metalness: 0.05, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
+              apron: new T.MeshStandardMaterial({ color: 0xb4bfcd, roughness: 0.95, metalness: 0.02, transparent: true, opacity: 0.7, depthWrite: false }),
+              bldg: new T.MeshStandardMaterial({ color: 0xe8ecf2, roughness: 0.55, metalness: 0.15, envMapIntensity: 0.8, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
+              taxi: new T.LineBasicMaterial({ transparent: true, opacity: 0.3 }) };
   const skin = (geo, mat) => { const m = new T.Mesh(geo, mat === M.dim ? M.hullDim : M.hull); m.add(new T.Mesh(geo, M.fem)); m.visible = solid; solids.push(m); return m; };
   function applyRender() { M.wire.opacity = solid ? 0.07 : 0.72; M.dim.opacity = solid ? 0.05 : 0.55; M.edge.opacity = solid ? 0.35 : 0.85; solids.forEach(m => m.visible = solid); }
   function colors() {
-    M.wire.color.set(css("--wire")); M.dim.color.set(css("--wire-dim")); M.edge.color.set(css("--wire")); M.floor.color.set(css("--wire-dim"));
+    M.wire.color.set(css("--wire")); M.dim.color.set(css("--wire-dim")); M.edge.color.set(css("--wire")); M.floor.color.set(css("--wire-dim")); M.taxi.color.set(css("--wire"));
     M.wind.color.set(css("--sky")); M.rain.color.set(css("--wire")); M.snow.color.set(css("--wire-dim")); M.bolt.color.set(css("--sky")); M.lights.color.set(css("--sky"));
     M.scan.color.set(css("--sky")); M.scanFill.color.set(css("--sky")); scene.fog.color.set(css("--stage")); paintRing(); applyRender();
   }
@@ -107,13 +105,13 @@ export function createStage(cv, host, opts = {}) {
   })();
   scene.add(floor);
 
-  // ---------- the field: runways at the airport's heading, approach lights, the aircraft on final ----------
+  // ---------- the field: the airport's real layout (north = -z, fitted to the ring), approach lights, the aircraft on final ----------
   const field = new T.Group(); field.position.y = GROUND; scene.add(field);
   const plane = new T.Group(), craft = airliner(); craft.scale.setScalar(0.55); craft.rotation.z = -0.05; plane.add(craft); field.add(plane);
   const approach = new T.Points(new T.BufferGeometry(), M.lights); field.add(approach);
   const rabbit = new T.Mesh(new T.SphereGeometry(0.13, 12, 8), new T.MeshBasicMaterial({ color: 0xffffff })); field.add(rabbit);
-  let runwayGroup = null, mainLen = 17, mainZ = 0, landDir = 1;
-  function runway(len, w = 0.85) {
+  let fieldGroup = null, rwys = [], heading = 0, landDir = 1, thr = [0, 0], dir = [1, 0];
+  function runway(len, w = 0.5) {
     const g = new T.Group(), slab = new T.Mesh(new T.PlaneGeometry(len, w), M.asphalt);
     slab.rotation.x = -Math.PI / 2; slab.visible = solid; solids.push(slab); g.add(slab);
     const x = len / 2, z = w / 2, y = 0.012;
@@ -123,27 +121,48 @@ export function createStage(cv, host, opts = {}) {
     g.add(seg(a, M.mark));
     return g;
   }
-  function setAirport(iata, heading) {
-    const lay = LAYOUT[iata] || LAYOUT.ATL;
-    if (runwayGroup) { field.remove(runwayGroup); runwayGroup.traverse(o => o.geometry?.dispose()); }   // remove() alone keeps the GPU buffers
-    runwayGroup = new T.Group();
-    solids.splice(0, solids.length, ...solids.filter(m => !(m.geometry instanceof T.PlaneGeometry)));
-    lay.runways.forEach(([off, len], i) => { const r = runway(len); r.position.z = off; runwayGroup.add(r); if (i === MAIN) { mainLen = len; mainZ = off; } });
-    for (const [rel, along, lat, len] of lay.cross) { const r = runway(len); r.position.set(along, 0, lat); r.rotation.y = -rel * Math.PI / 180; runwayGroup.add(r); }
-    field.add(runwayGroup);
-    field.rotation.y = Math.PI / 2 - (heading || 0) * Math.PI / 180;
+  function footprint(ring, s, h) {   // ring: [x, y, ...] metres (x east, y north); h > 0 extrudes a building
+    const shape = new T.Shape(); for (let i = 0; i < ring.length; i += 2) shape[i ? "lineTo" : "moveTo"](ring[i] * s, ring[i + 1] * s);
+    const geo = h ? new T.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false }) : new T.ShapeGeometry(shape);
+    geo.rotateX(-Math.PI / 2);   // shape y (north) -> -z, extrusion -> up
+    const m = new T.Mesh(geo, h ? M.bldg : M.apron); m.visible = solid; solids.push(m);
+    const g = new T.Group(); g.add(m, new T.LineSegments(new T.EdgesGeometry(geo, 30), h ? M.edge : M.dim)); return g;
+  }
+  function setAirport(iata, hdg) {
+    const f = FIELDS[iata] || Object.values(FIELDS)[0], s = FIT / f.r, P = (x, y) => [x * s, -y * s];
+    if (fieldGroup) {   // remove() alone keeps the GPU buffers
+      field.remove(fieldGroup); const old = new Set(); fieldGroup.traverse(o => { old.add(o); o.geometry?.dispose(); });
+      solids.splice(0, solids.length, ...solids.filter(m => !old.has(m)));
+    }
+    fieldGroup = new T.Group();
+    for (const ring of f.aprons) { const a = footprint(ring, s, 0); a.position.y = 0.004; fieldGroup.add(a); }
+    const tx = [];
+    for (const w of f.taxiways) for (let i = 2; i < w.length; i += 2) tx.push(w[i - 2] * s, 0.008, -w[i - 1] * s, w[i] * s, 0.008, -w[i + 1] * s);
+    fieldGroup.add(seg(tx, M.taxi));
+    rwys = f.runways.map(([ref, x1, y1, x2, y2]) => {
+      const a = P(x1, y1), b = P(x2, y2), len = Math.hypot(b[0] - a[0], b[1] - a[1]), r = runway(len);
+      r.position.set((a[0] + b[0]) / 2, 0, (a[1] + b[1]) / 2); r.rotation.y = Math.atan2(a[1] - b[1], b[0] - a[0]); fieldGroup.add(r);
+      return { ref, a, b, len };
+    });
+    for (const ring of f.terminals) fieldGroup.add(footprint(ring, s, 0.3));
+    field.add(fieldGroup); heading = hdg || 0;
     placeApproach(); kick();
   }
-  function placeApproach() {
-    const thr = -landDir * mainLen / 2, a = [];
-    for (let i = 1; i <= 14; i++) a.push(thr - landDir * i * 0.5, 0.05, mainZ);
-    approach.geometry.dispose(); approach.geometry.setAttribute("position", new T.Float32BufferAttribute(a, 3));
-    plane.rotation.y = landDir > 0 ? Math.PI : 0;
+  function placeApproach() {   // land on the runway end numbered nearest the landing heading (the outlook's "landing runway NN"), longest first
+    const land = (landDir > 0 ? heading : heading + 180) % 360, off = n => Math.abs(((n * 10 - land) % 360 + 540) % 360 - 180);
+    let best = null;
+    for (const r of rwys) r.ref.split("/").forEach((end, k) => { const sc = off(parseInt(end) || 0) * 100 - r.len; if (!best || sc < best.sc) best = { sc, r, k }; });
+    if (!best) return;
+    const { r, k } = best, [p, q] = k ? [r.b, r.a] : [r.a, r.b];
+    thr = p; dir = [(q[0] - p[0]) / r.len, (q[1] - p[1]) / r.len];
+    const a = []; for (let i = 1; i <= 14; i++) a.push(thr[0] - dir[0] * i * 0.5, 0.05, thr[1] - dir[1] * i * 0.5);
+    approach.geometry.dispose(); approach.geometry = new T.BufferGeometry(); approach.geometry.setAttribute("position", new T.Float32BufferAttribute(a, 3));
+    plane.rotation.y = Math.atan2(dir[1], -dir[0]);   // the airliner's nose is local -x
   }
+  const along = (d, y) => [thr[0] + dir[0] * d, y, thr[1] + dir[1] * d];
   function flyPlane(u) {   // u in [0, 1): 0..0.7 final approach, 0.7..1 rollout
-    const thr = -landDir * mainLen / 2;
-    if (u < 0.7) { const k = u / 0.7; plane.position.set(thr - landDir * 9 * (1 - k) + landDir * 1.2 * k, 0.12 + 3 * (1 - k), mainZ); craft.rotation.z = -0.05; }
-    else { const k = (u - 0.7) / 0.3, e = 1 - (1 - k) * (1 - k); plane.position.set(thr + landDir * (1.2 + 6 * e), 0.12, mainZ); craft.rotation.z = -0.05 * (1 - k); }
+    if (u < 0.7) { const k = u / 0.7; plane.position.set(...along(-9 * (1 - k) + 1.2 * k, 0.12 + 3 * (1 - k))); craft.rotation.z = -0.05; }
+    else { const k = (u - 0.7) / 0.3, e = 1 - (1 - k) * (1 - k); plane.position.set(...along(1.2 + 6 * e, 0.12)); craft.rotation.z = -0.05 * (1 - k); }
   }
 
   // ---------- capacity ring: one arc per forecast hour (+3 h at north, clockwise), coloured by severity ----------
@@ -239,7 +258,7 @@ export function createStage(cv, host, opts = {}) {
     if (tAz !== null && !dragging) { az += (tAz - az) * Math.min(1, dt * 4); if (Math.abs(tAz - az) > 0.002) easing = true; }
     if (tEl !== null && !dragging) { el += (tEl - el) * Math.min(1, dt * 4); if (Math.abs(tEl - el) > 0.002) easing = true; else if (view === "3d") tEl = null; }
     flyPlane(reduce ? 0.55 : (clock / 18) % 1);
-    const k = ((clock * 2.2) % 1), thr = -landDir * mainLen / 2; rabbit.position.set(thr - landDir * (7 - 6.5 * k), 0.1, mainZ);
+    rabbit.position.set(...along(-(7 - 6.5 * ((clock * 2.2) % 1)), 0.1));
     // wind: streaks drift downwind, gusts pulse their speed
     const b = (wx.dir ?? 225) * Math.PI / 180, ux = -Math.sin(b), uz = Math.cos(b), calm = wx.dir == null || wx.kt < 3;
     M.wind.opacity = calm ? 0.2 : Math.min(0.85, 0.4 + wx.kt / 35);

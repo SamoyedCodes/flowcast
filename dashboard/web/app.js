@@ -123,7 +123,8 @@ function outlookView() {
   const atRisk = o.n_flights ? Math.round(100 * o.n_high / o.n_flights) : 0;
   const tag = `<div class="hud bl" data-tour="stage">
       <div class="model-tag"><div class="readout" style="font-size:46px">${a.iata}</div><div class="label">${esc(a.name)}</div>
-        <div class="model-sum">Issued ${day(o.t0)} ${hhmm(o.t0)} · local ${esc(o.local)}${w ? ` · ${flow(w, a)}` : ""}</div></div>
+        <div class="model-sum">Issued ${day(o.t0)} ${hhmm(o.t0)} · local ${esc(o.local)}${w ? ` · ${flow(w, a)}` : ""}</div>
+        <div class="label">Airfield © OpenStreetMap contributors</div></div>
       <div class="readouts"><div><div class="readout">${n0(low.pred)}<small>/h</small></div><div class="label">Lowest forecast AAR</div></div>
         <div><div class="readout">${atRisk}<small>%</small></div><div class="label">Flights at risk ≥ ${pct(S.thr)}%</div></div></div>
     </div>`;
