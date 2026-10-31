@@ -13,7 +13,8 @@ pip install -r requirements.txt
 python run_pipeline.py                 # download -> clean -> features -> train -> evaluate (cached after first run)
 python run_pipeline.py --skip-download # offline replay from the verified cache
 python -m pytest -q tests test_stage1_pipeline.py   # leakage / physics / data-integrity checks
-streamlit run dashboard/app.py         # the ATC dashboard
+python dashboard/server.py             # the ATC dashboard: http://localhost:8502
+streamlit run dashboard/app.py         # the earlier Streamlit version of the same dashboard
 python run_pipeline.py --sensitivity   # optional: re-test the AAR assumptions (about 8 min)
 ```
 
@@ -42,7 +43,8 @@ downloads by itself (2023-01 to 2025-07, no manual steps):
 | `src/train_delay.py` | Severe-delay classifier: picks the model family out-of-fold (regularised logistic regression beat LightGBM), ablations, calibration, bootstrap, failure cases |
 | `src/sensitivity.py` | Does the conclusion survive different AAR assumptions? Does the AAR rule agree with real BTS arrivals? |
 | `src/advisory.py` | Rule-based recommendations for the controller |
-| `dashboard/app.py` | Streamlit decision-support dashboard (replays the held-out 2025 period) |
+| `dashboard/server.py`, `dashboard/web/` | Decision-support dashboard (replays the held-out 2025 period): a stdlib JSON API over the pipeline outputs and a no-build page with a three.js airfield. Visual design adapted from [Torque Stripe](https://github.com/aljabrialam/torque-stripe) (MIT) |
+| `dashboard/app.py` | The earlier Streamlit version of the dashboard |
 | `tests/` | Invariant tests (no look-ahead, wind geometry, AAR rule, chronological splits, TAF validity, stale weather, purging) |
 | `reports/` | All metrics as CSV |
 | `presentation/` | `Challenge5_Capacity_and_Delay_Risk.pptx` (14 slides, built by `build_deck.py` from `reports/`) and `LEARNING_BRIEF.md` (what was built and why, with Q&A prep) |

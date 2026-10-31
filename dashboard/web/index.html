@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Capacity &amp; Risk</title>
+  <meta name="description" content="Airport arrival capacity and severe-delay risk, 3 to 12 hours ahead, for ATL and DFW." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='26' fill='%2300205B'/%3E%3Crect x='28' y='12' width='8' height='40' rx='1.5' fill='%23fff'/%3E%3Cpath d='M32 6a26 26 0 0 1 26 26' fill='none' stroke='%230085CA' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="styles.css" />
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+                   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/" } }
+  </script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div class="sky"></div>
+  <div class="stage-host" id="stage" aria-hidden="true"><canvas></canvas></div>
+  <div class="vignette"></div>
+  <div class="grain"></div>
+  <div class="shell">
+    <nav class="rail glass" id="rail" aria-label="Views"></nav>
+    <header class="topbar" id="topbar"></header>
+    <main class="view" id="view"></main>
+  </div>
+  <div id="overlay"></div>
+</body>
+</html>
