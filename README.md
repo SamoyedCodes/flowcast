@@ -44,9 +44,11 @@ downloads by itself (2023-01 to 2025-07, no manual steps):
 | `src/sensitivity.py` | Does the conclusion survive different AAR assumptions? Does the AAR rule agree with real BTS arrivals? |
 | `src/advisory.py` | Rule-based recommendations for the controller |
 | `dashboard/server.py`, `dashboard/web/` | Decision-support dashboard (replays the held-out 2025 period): a stdlib JSON API over the pipeline outputs and a no-build page with a three.js airfield. Visual design adapted from [Torque Stripe](https://github.com/aljabrialam/torque-stripe) (MIT) |
-| `dashboard/app.py` | The earlier Streamlit version of the dashboard |
+| `dashboard/app.py` | The earlier Streamlit version of the dashboard. The **Storm hours** tab shows the `reports/jho_*.csv` results; the Recommendations tab has an optional Claude plain-English summary (needs `ANTHROPIC_API_KEY` in the environment or a git-ignored `.env`) |
+| `jho/aerocast_data/` | Full-BTS pipeline (`run_all.py`): downloads BTS, METAR, TAF and NOAA Storm Events, trains LightGBM, writes its own reports, models and the two prediction files its stand-alone dashboard needs. Source of `reports/jho_*.csv` |
+| `jho/*.ipynb`, `jho/data/clean/` | Corrected versions of the exploratory notebooks (weather hour read as UTC, post-event columns renamed) and their cleaned output. Not read by the main pipeline, which uses `data/clean/` |
 | `tests/` | Invariant tests (no look-ahead, wind geometry, AAR rule, chronological splits, TAF validity, stale weather, purging) |
-| `reports/` | All metrics as CSV |
+| `reports/` | All metrics as CSV (`jho_*.csv` come from the full-BTS pipeline, see below) |
 | `presentation/` | `Challenge5_Capacity_and_Delay_Risk.pptx` (14 slides, built by `build_deck.py` from `reports/`) and `LEARNING_BRIEF.md` (what was built and why, with Q&A prep) |
 
 `weather_download.ipynb` and `data_cleaning.ipynb` are the earlier exploratory notebooks; the scripts above supersede them.

@@ -29,3 +29,9 @@ DataSet/.DS_Store
 **/processed/aar_horizon.parquet
 # keep the small trained models the jho dashboard loads (the root models/ rule above would hide them)
 !jho/aerocast_data/data/models/
+# jho intermediates, re-created by run_all.py (the jho dashboard only needs the two *_predictions files)
+jho/aerocast_data/data/processed/metar*.parquet
+jho/aerocast_data/data/processed/taf.parquet
+jho/aerocast_data/data/processed/airport_hourly.parquet
+# duplicate of data/weather/hourly_atl_dfw.csv
+jho/data/weather/
