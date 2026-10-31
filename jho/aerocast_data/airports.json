@@ -1,0 +1,5 @@
+{
+  "_note": "Add any airport by IATA code. runway_heading_deg is required for wind components; tz is looked up from airportsdata if omitted. ATL=80 and DFW=180 are the challenge's stated assumptions (Airbus Track PDF, Challenge #5, p.6).",
+  "ATL": {"icao": "KATL", "tz": "America/New_York", "runway_heading_deg": 80, "lat": 33.6367, "lon": -84.4281, "storm_state": "GEORGIA"},
+  "DFW": {"icao": "KDFW", "tz": "America/Chicago", "runway_heading_deg": 180, "lat": 32.8968, "lon": -97.0380, "storm_state": "TEXAS"}
+}
