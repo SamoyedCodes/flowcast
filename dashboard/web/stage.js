@@ -125,7 +125,7 @@ export function createStage(cv, host, opts = {}) {
   }
   function setAirport(iata, heading) {
     const lay = LAYOUT[iata] || LAYOUT.ATL;
-    if (runwayGroup) field.remove(runwayGroup);
+    if (runwayGroup) { field.remove(runwayGroup); runwayGroup.traverse(o => o.geometry?.dispose()); }   // remove() alone keeps the GPU buffers
     runwayGroup = new T.Group();
     solids.splice(0, solids.length, ...solids.filter(m => !(m.geometry instanceof T.PlaneGeometry)));
     lay.runways.forEach(([off, len], i) => { const r = runway(len); r.position.z = off; runwayGroup.add(r); if (i === MAIN) { mainLen = len; mainZ = off; } });
@@ -137,7 +137,7 @@ export function createStage(cv, host, opts = {}) {
   function placeApproach() {
     const thr = -landDir * mainLen / 2, a = [];
     for (let i = 1; i <= 14; i++) a.push(thr - landDir * i * 0.5, 0.05, mainZ);
-    approach.geometry.setAttribute("position", new T.Float32BufferAttribute(a, 3));
+    approach.geometry.dispose(); approach.geometry.setAttribute("position", new T.Float32BufferAttribute(a, 3));
     plane.rotation.y = landDir > 0 ? Math.PI : 0;
   }
   function flyPlane(u) {   // u in [0, 1): 0..0.7 final approach, 0.7..1 rollout
@@ -276,7 +276,7 @@ export function createStage(cv, host, opts = {}) {
   function strike() {
     const x = rnd(-10, 10), z = rnd(-10, 10), top = cloudY(), a = []; let p = [x, top, z];
     for (let i = 1; i <= 9; i++) { const q = [x + rnd(-0.8, 0.8), top - (top - GROUND) * i / 9, z + rnd(-0.8, 0.8)]; a.push(...p, ...q); p = q; }
-    bolt.geometry.setAttribute("position", new T.Float32BufferAttribute(a, 3));
+    bolt.geometry.dispose(); bolt.geometry.setAttribute("position", new T.Float32BufferAttribute(a, 3));
   }
 
   colors(); size(); setAirport("ATL", 80); setWeather(null);
