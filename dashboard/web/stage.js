@@ -112,7 +112,7 @@ export function createStage(cv, host, opts = {}) {
   // ---------- the field: the airport's real layout (north = -z, fitted to the ring), approach lights, the aircraft on final ----------
   // Everything on the field shares one scale, upm (scene units per metre), so it is true to life except the aircraft,
   // drawn PLANE_X times life size (an A320 is 37.6 m nose to tail) so it still reads at dashboard zoom.
-  const AC_LEN = 37.6, PLANE_X = 10, BLDG_H = 18, GLIDE = Math.tan(3 * Math.PI / 180), FINAL = 3000, TD = 300, ROLL = 1500, ALS = 730;
+  const AC_LEN = 37.6, PLANE_X = 10, BLDG_H = 18, GLIDE = Math.tan(3 * Math.PI / 180), FINAL = 3000, TD = 300, ROLL = 1500, ALS = 730, VAPP = 140;   // VAPP: approach speed, kt
   const field = new T.Group(); field.position.y = GROUND; scene.add(field);
   const plane = new T.Group(), craft = airliner(); craft.rotation.z = -0.05; plane.add(craft); field.add(plane);
   const shadow = new T.Mesh(new T.PlaneGeometry(10, 9.6), new T.MeshBasicMaterial({ map: blobTexture(), color: 0x0b1f45, transparent: true, depthWrite: false }));
@@ -167,12 +167,16 @@ export function createStage(cv, host, opts = {}) {
     thr = p; dir = [(q[0] - p[0]) / r.len, (q[1] - p[1]) / r.len];
     const a = []; for (let d = 30; d <= ALS; d += 30) a.push(...along(-d * upm, 0.02));   // approach light bars every 100 ft
     approach.geometry.dispose(); approach.geometry = new T.BufferGeometry(); approach.geometry.setAttribute("position", new T.Float32BufferAttribute(a, 3));
-    plane.rotation.y = shadow.rotation.y = Math.atan2(dir[1], -dir[0]);   // the airliner's nose is local -x
   }
   const along = (d, y) => [thr[0] + dir[0] * d, y, thr[1] + dir[1] * d];
-  function flyPlane(u) {   // u in [0, 1): 0..0.7 final down a 3° glideslope to touchdown TD m past the threshold, 0.7..1 rollout
+  function flyPlane(u, kt, ux, uz) {   // u in [0, 1): 0..0.7 final down a 3° glideslope to touchdown TD m past the threshold, 0.7..1 rollout; wind kt towards (ux, uz)
     if (u < 0.7) { const d = -FINAL + (FINAL + TD) * u / 0.7; plane.position.set(...along(d * upm, gearY + (TD - d) * GLIDE * upm)); craft.rotation.z = -0.05; }
     else { const k = (u - 0.7) / 0.3, e = 1 - (1 - k) * (1 - k); plane.position.set(...along((TD + ROLL * e) * upm, gearY)); craft.rotation.z = -0.05 * (1 - k); }
+    const air = u < 0.64 ? 1 : u < 0.7 ? (0.7 - u) / 0.06 : 0;   // the crab is kicked out and the bumps die in the flare
+    const a = ux * dir[0] + uz * dir[1], cx = (ux - a * dir[0]) * kt / VAPP * air, cz = (uz - a * dir[1]) * kt / VAPP * air;
+    plane.rotation.y = shadow.rotation.y = Math.atan2(dir[1] - cz, cx - dir[0]);   // nose (local -x) into the crosswind, so the track stays on the centreline
+    const g = Math.max(0, wx.gust - wx.kt) * air;   // gust spread: the airframe rocks and bumps
+    craft.rotation.x = g * 0.012 * Math.sin(clock * 2.3) * Math.sin(clock * 3.1 + 1); plane.position.y += g * 0.02 * gearY * Math.sin(clock * 1.9 + 2) * Math.sin(clock * 4.3);
     const h = plane.position.y - gearY;   // height above the runway: the shadow slides off with the key light (-6, 7, 5) and fades
     shadow.position.set(plane.position.x + h * 6 / 7, 0.016, plane.position.z - h * 5 / 7); shadow.material.opacity = 0.55 / (1 + h * 3);
   }
@@ -209,9 +213,11 @@ export function createStage(cv, host, opts = {}) {
   const NR = 1400, rPos = new Float32Array(NR * 6), sPos = new Float32Array(NR * 3), rP = Array.from({ length: NR }, () => [rnd(-15, 15), rnd(GROUND, GROUND + 9), rnd(-15, 15), rnd(0, 6.3)]);
   const rGeo = new T.BufferGeometry(); rGeo.setAttribute("position", new T.BufferAttribute(rPos, 3)); const rain = new T.LineSegments(rGeo, M.rain); scene.add(rain);
   const sGeo = new T.BufferGeometry(); sGeo.setAttribute("position", new T.BufferAttribute(sPos, 3)); const snow = new T.Points(sGeo, M.snow); scene.add(snow);
-  const deck = new T.Group(), cloudTex = cloudTexture();
-  for (const [dy, op] of [[0, 0.75], [-0.35, 0.45]]) {
-    const m = new T.Mesh(new T.PlaneGeometry(90, 90), new T.MeshBasicMaterial({ map: cloudTex, color: 0xf3f6fa, transparent: true, opacity: op, depthWrite: false, side: T.DoubleSide }));
+  const deck = new T.Group(), cloudTex = cloudTexture(), thin = (() => {   // alpha: a third over the field so it reads through the deck, solid past twice the ring
+    const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d"), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(RR / 45, "#555"); gr.addColorStop(RR * 2 / 45, "#fff"); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return new T.CanvasTexture(c); })();
+  for (const [dy, op] of [[0, 0.75], [0.35, 0.45]]) {   // the base at the ceiling, a thinner layer above it
+    const m = new T.Mesh(new T.PlaneGeometry(90, 90), new T.MeshBasicMaterial({ map: cloudTex, alphaMap: thin, color: 0xf3f6fa, transparent: true, opacity: op, depthWrite: false, side: T.DoubleSide }));
     m.rotation.x = -Math.PI / 2; m.position.y = dy; deck.add(m);
   }
   deck.add(seg(circle(BOX, 96), M.dim)); scene.add(deck);
@@ -230,7 +236,7 @@ export function createStage(cv, host, opts = {}) {
         g.fillStyle = gr; g.beginPath(); g.arc(x + dx, y + dy, r, 0, 7); g.fill(); } }
     const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(3, 3); return t;
   }
-  const cloudY = () => wx.ceil == null ? GROUND + 9 : GROUND + Math.max(0.7, Math.min(8.5, wx.ceil / 400));
+  const cloudY = () => GROUND + (wx.ceil == null ? 9 : Math.min(8.5, Math.max(60, wx.ceil * 0.3048) * upm));   // true height over the field, 200 ft at the lowest
   function setWeather(now) {
     const code = (now && now.wx) || "";
     wx = { dir: now?.wind_dir ?? null, kt: now?.wind_kt ?? 0, gust: now?.gust_kt ?? 0, vis: now?.vis_mi ?? 10,
@@ -274,10 +280,10 @@ export function createStage(cv, host, opts = {}) {
     let easing = false;
     if (tAz !== null && !dragging) { az += (tAz - az) * Math.min(1, dt * 4); if (Math.abs(tAz - az) > 0.002) easing = true; }
     if (tEl !== null && !dragging) { el += (tEl - el) * Math.min(1, dt * 4); if (Math.abs(tEl - el) > 0.002) easing = true; else if (view === "3d") tEl = null; }
-    flyPlane(reduce ? 0.55 : (clock / 18) % 1);
+    const b = (wx.dir ?? 225) * Math.PI / 180, ux = -Math.sin(b), uz = Math.cos(b), calm = wx.dir == null || wx.kt < 3;
+    flyPlane(reduce ? 0.55 : (clock / 18) % 1, calm ? 0 : wx.kt, ux, uz);
     rabbit.position.set(...along(-(ALS - (ALS - 60) * ((clock * 2.2) % 1)) * upm, 0.03));
     // wind: streaks drift downwind, gusts pulse their speed
-    const b = (wx.dir ?? 225) * Math.PI / 180, ux = -Math.sin(b), uz = Math.cos(b), calm = wx.dir == null || wx.kt < 3;
     M.wind.opacity = calm ? 0.2 : Math.min(0.85, 0.4 + wx.kt / 35);
     for (let i = 0; i < NW; i++) {
       const p = wP[i], s = calm ? 0.8 : wx.kt + (wx.gust > wx.kt ? (wx.gust - wx.kt) * (0.5 + 0.5 * Math.sin(clock * 1.7 + p[3])) : 0), v = s * 0.14;
@@ -294,6 +300,7 @@ export function createStage(cv, host, opts = {}) {
         if (snowy) sPos.set([p[0], p[1], p[2]], i * 3); else rPos.set([p[0], p[1], p[2], p[0] + ux * drift * 0.04, p[1] + 0.42, p[2] + uz * drift * 0.04], i * 6); }
       (snowy ? sGeo : rGeo).attributes.position.needsUpdate = true;
     }
+    deck.position.y = cloudY();   // follows upm when the airport changes
     if (deck.visible && anim) { cloudTex.offset.x += ux * (wx.kt || 2) * 0.00012 * dt * 60; cloudTex.offset.y -= uz * (wx.kt || 2) * 0.00012 * dt * 60; }
     // lightning: a flash and a bolt every few seconds when thunder is reported
     if (wx.thunder && anim) { nextFlash -= dt; if (nextFlash <= 0) { nextFlash = rnd(2.5, 7); flashT = 0.35; strike(); } }
