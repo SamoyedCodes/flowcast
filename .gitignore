@@ -14,3 +14,18 @@ __pycache__/
 .venv/
 .idea/
 .DS_Store
+DataSet/.DS_Store
+
+# secrets and local env (never commit)
+.env
+**/.env
+
+# jho/aerocast_data pipeline: raw downloads and big intermediate tables are re-created by run_all.py
+**/data/raw/
+*.part
+*.log
+**/processed/bts_flights.parquet
+**/processed/flights_horizon.parquet
+**/processed/aar_horizon.parquet
+# keep the small trained models the jho dashboard loads (the root models/ rule above would hide them)
+!jho/aerocast_data/data/models/

@@ -18,7 +18,7 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 
-from common import DATA, MANIFEST, PROC, load_airports
+from common import DATA, MANIFEST, PROC, ROOT, load_airports
 
 REPORTS, MODELS = DATA / "reports", DATA / "models"
 
@@ -86,8 +86,19 @@ def recommendations(row, flights_hi):
     return out
 
 
-def claude_summary(context):
+def api_key():
+    """ANTHROPIC_API_KEY from the environment, else from a local, git-ignored .env next to this file."""
     key = os.environ.get("ANTHROPIC_API_KEY")
+    env = ROOT / ".env"
+    if not key and env.exists():
+        for line in env.read_text().splitlines():
+            if line.strip().startswith("ANTHROPIC_API_KEY="):
+                key = line.split("=", 1)[1].strip().strip('"')
+    return key or None
+
+
+def claude_summary(context):
+    key = api_key()
     if not key:
         return None
     body = {"model": "claude-haiku-5-5", "max_tokens": 1500,
@@ -131,7 +142,7 @@ def main():
         target = st.selectbox("Target hour (UTC, test period)", hours, index=default,
                               format_func=lambda t: f"{t:%Y-%m-%d %H:%MZ}  ({t.tz_localize('UTC').tz_convert(tz):%H:%M} local)")
         use_llm = st.checkbox("Claude plain-English summary", value=False,
-                              help="Needs ANTHROPIC_API_KEY in the environment. Explains on-screen drivers only.")
+                              help="Needs ANTHROPIC_API_KEY in the environment or in aerocast_data/.env. Explains on-screen drivers only.")
 
     row = sub[sub.target_hour_utc == target].iloc[0]
     fl = s[(s.airport == ap) & (s.horizon_h == H) & (s.event_utc.dt.floor("h") == target)].copy()
@@ -209,12 +220,26 @@ def main():
             m = mets["aar_metrics"]
             st.markdown("**AAR proxy, test set 2025.** RMSE in arrivals/hour; nRMSE divides by the airport's own 95th percentile.")
             st.dataframe(m[m.airport == ap].round(3), width="stretch")
+            if "storm_hours" in set(m.subset):
+                sm = m[(m.airport == ap) & (m.subset == "storm_hours")]
+                st.markdown("**Storm hours only** (a NOAA Storm Event within 50 km overlaps the target hour; NOAA is used "
+                            "only to label hours after the fact, never as an input). This is the case the challenge asks about.")
+                st.dataframe(sm[["horizon_h", "n", "rmse_model", "rmse_climatology", "rmse_schedule", "rmse_persistence",
+                                 "interval_coverage", "model_beats_climatology"]].round(3), width="stretch")
+                st.caption("Errors are much larger in storm hours and the 90% interval covers far less than 90%. "
+                           "Treat storm-hour forecasts as a warning signal, not a precise number.")
             bad = m[~m.model_beats_climatology]
             st.markdown("**Where the model does not beat climatology (failure cases):**")
             st.dataframe(bad.round(3) if len(bad) else pd.DataFrame({"note": ["none in this run"]}), width="stretch")
         if "severe_metrics" in mets:
+            sv = mets["severe_metrics"]
             st.markdown("**Severe delay (>45 min, cancelled or diverted), test set 2025**")
-            st.dataframe(mets["severe_metrics"][mets["severe_metrics"].airport == ap].round(3), width="stretch")
+            st.dataframe(sv[sv.airport == ap].round(3), width="stretch")
+            if "subset" in sv:
+                worse = sv[(sv.airport == ap) & (sv.subset == "storm_hours") & (sv.pr_auc_model < sv.pr_auc_climatology)]
+                if len(worse):
+                    st.markdown("**Storm hours where the classifier ranks flights worse than climatology (failure case):**")
+                    st.dataframe(worse[["direction", "horizon_h", "n", "pr_auc_model", "pr_auc_climatology"]].round(3), width="stretch")
         if "severe_calibration" in mets:
             c = mets["severe_calibration"]
             fig = go.Figure([go.Scatter(x=c.mean_pred, y=c.obs_rate, mode="markers+lines", name="model"),
