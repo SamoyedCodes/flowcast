@@ -9,7 +9,7 @@ and shows both to an air-traffic duty manager in a dashboard with history and pl
 ## Run it
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 python run_pipeline.py                 # download -> clean -> features -> train -> evaluate (cached after first run)
 python run_pipeline.py --skip-download # offline replay from the verified cache
 python -m pytest -q tests test_stage1_pipeline.py   # leakage / physics / data-integrity checks
@@ -26,7 +26,47 @@ downloads by itself (2023-01 to 2025-07, no manual steps):
   on-time archives** and OpenFlights airport time zones, fetched by `stage1_pipeline.py` into `data/external/`.
   The first run downloads about 1 GB. Every file is validated and gets a `.source.json` receipt with its URL and
   SHA-256; later runs reuse the cache, and `--skip-download` refuses to run if anything is missing or changed.
-  `data/external/` is not committed.
+  Raw archives in `data/external/` are not committed; only the small `airports.dat` lookup is included for deployment.
+
+## Deploy the web dashboard on Vercel
+
+The web dashboard is a **historical replay of January–July 2025**, not a live weather or flight forecast.
+The checked-in replay snapshot lets it run from a fresh checkout without downloading archives or training models.
+For just the web dashboard, install `requirements.txt` and run `python dashboard/server.py`.
+Use `requirements-dev.txt` for tests, Streamlit, pipeline work, and presentations.
+
+Import the deployment branch into Vercel with these settings:
+
+| Setting | Value |
+|---|---|
+| Root Directory | Repository root (`.`), not `dashboard/web` |
+| Framework Preset | Other |
+| Build Command | Empty (provided by `vercel.json`) |
+| Output Directory | `dashboard/web` |
+| Python | 3.13 (provided by `.python-version`) |
+| Build environment variable (Preview and Production) | `VERCEL_PYTHON_DISABLE_RUNTIME_INSTALL=1` |
+
+Vercel serves the frontend assets from its CDN and routes `/api/*` to one Python function,
+which exports the same handler used locally. Only the frontend output is public; replay data and models
+are function inputs. `.vercelignore` allowlists deployment inputs and excludes raw downloads, local environments,
+notebooks, Streamlit, and training-only files. No build step runs the pipeline.
+Set the build environment variable above in Vercel Project Settings. It keeps dependencies in the function
+bundle and avoids the CLI's dependency-externalization failure for newer Linux wheel tags when building on macOS.
+The application itself requires no credentials or API keys.
+
+To refresh the replay snapshot, install the development requirements, run `python run_pipeline.py` locally
+(or `--skip-download` with a complete verified cache), then run
+`python -m pytest -q tests test_stage1_pipeline.py`. Commit the four allowlisted files in `data/processed/`,
+`data/external/airports.dat`, the ten `models/delay_lead*.joblib` files, and the updated `reports/` together.
+Keep dependency pins aligned with the environment that wrote the joblib models. Other generated files stay ignored.
+
+For Vercel-specific validation, use `npx vercel pull --environment=preview` after linking your project,
+then `npx vercel build` (with the build variable present in the pulled environment).
+Check the Linux function bundle against Vercel's
+[500 MB Python bundle limit](https://vercel.com/docs/functions/runtimes/python) and test the resulting preview's
+airport/date controls, risk threshold, sensitivity, flight drivers, history, and evaluation views.
+The local API uses about 1 GB at peak when loading flight explanations; allow room for cold starts and concurrent requests.
+The earlier Streamlit dashboard and download/training jobs are not deployed by this configuration.
 
 ## What is in the repo
 

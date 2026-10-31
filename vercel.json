@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "",
+  "outputDirectory": "dashboard/web",
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{.*/**,_uv/**,*.ipynb,*.md,*.py,tests/**,jho/**,presentation/**,dashboard/web/**,dashboard/app.py,dashboard/build_airfields.py,data/**,models/**,requirements-dev.txt}",
+      "includeFiles": "{data/processed/hourly_weather.csv,data/processed/aar_predictions.parquet,data/processed/delay_test_predictions.parquet,data/processed/delay_table.parquet,data/external/airports.dat,models/delay_lead[3-9].joblib,models/delay_lead1[0-2].joblib}"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api" }
+  ]
+}

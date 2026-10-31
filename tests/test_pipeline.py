@@ -9,6 +9,10 @@ from src import aar, config as C, features, taf, weather
 
 PROC = C.PROC
 needs_data = pytest.mark.skipif(not (PROC / "delay_table.parquet").exists(), reason="run run_pipeline.py first")
+needs_aar_table = pytest.mark.skipif(not (PROC / "aar_table.parquet").exists(), reason="run run_pipeline.py first")
+needs_feature_metadata = pytest.mark.skipif(
+    not all((C.MODELS / name).exists() for name in ("delay_features.json", "aar_features.json")),
+    reason="run run_pipeline.py first")
 ATL = C.AIRPORTS["KATL"]
 
 
@@ -44,6 +48,7 @@ def test_aar_rule():
 
 # ---------------------------------------------------------------- data integrity
 @needs_data
+@needs_aar_table
 def test_splits_are_chronological_and_disjoint():
     for name, tcol in (("aar_table", "hour_utc"), ("delay_table", "event_utc")):
         t = pd.read_parquet(PROC / f"{name}.parquet", columns=[tcol, "split"])
@@ -53,6 +58,7 @@ def test_splits_are_chronological_and_disjoint():
 
 
 @needs_data
+@needs_aar_table
 def test_weather_features_published_before_issue_time():
     t = pd.read_parquet(PROC / "delay_table.parquet", columns=["issue_utc", "obs_hour_utc", "lead_h", "event_utc"])
     assert ((t["event_utc"] - t["issue_utc"]) == pd.to_timedelta(t["lead_h"], unit="h")).all()
@@ -62,14 +68,14 @@ def test_weather_features_published_before_issue_time():
     assert (a["obs_hour_utc"] < a["issue_utc"]).all() and (a["obs_hour_utc"] < a["hour_utc"]).all()
 
 
-@needs_data
+@needs_aar_table
 def test_taf_issued_before_forecast_time():
     a = pd.read_parquet(PROC / "aar_table.parquet", columns=["taf_age_h", "lead_h"]).dropna()
     # age = target hour - TAF issue time; a TAF used at lead h must have been issued at least h hours before the hour
     assert (a["taf_age_h"] >= a["lead_h"] - 1e-6).all()
 
 
-@needs_data
+@needs_feature_metadata
 def test_no_leaky_columns_in_model_features():
     feats = set(json.load(open(C.MODELS / "delay_features.json")))
     banned = {"delay_min", "severe_delay", "TAXI_OUT", "TAXI_IN", "ARR_DELAY", "DEP_DELAY", "CANCELLED", "event_utc", "issue_utc", "flight_id"}
@@ -85,7 +91,7 @@ def test_recent_disruption_excludes_the_flight_itself():
     assert (t["rec_dep_n_6h"] <= t["rec_dep_n_24h"]).all()
 
 
-@needs_data
+@needs_aar_table
 def test_aar_target_range_and_missing():
     a = pd.read_parquet(PROC / "aar_table.parquet", columns=["y_ratio", "airport"])
     assert a["y_ratio"].between(0.3, 1.0001).all()
