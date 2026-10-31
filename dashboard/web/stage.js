@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import FIELDS from "./airfields.js";   // real runways, taxiways, aprons, terminals (OpenStreetMap), see dashboard/build_airfields.py
 
-const GROUND = -2.2, RR = 12.6, BOX = 17, FIT = 11.4;   // FIT: farthest runway end, just inside the capacity ring
+const GROUND = -2.2, RR = 12.6, PAD = RR - 0.4, BOX = 17, FIT = 12.1;   // FIT: farthest runway end, just inside the capacity ring
 
 export function createStage(cv, host, opts = {}) {
   const T = THREE, reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -38,9 +38,10 @@ export function createStage(cv, host, opts = {}) {
               hullDim: new T.MeshPhysicalMaterial({ color: 0x6f747a, metalness: 0.4, roughness: 0.5, envMapIntensity: 0.6, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
               fem: new T.MeshBasicMaterial({ color: 0x00205b, wireframe: true, transparent: true, opacity: 0.035, depthWrite: false }),
               intake: new T.MeshStandardMaterial({ color: 0x120c08, metalness: 0.2, roughness: 0.8, side: T.DoubleSide }),
-              asphalt: new T.MeshStandardMaterial({ color: 0x8796ab, roughness: 0.92, metalness: 0.05, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
+              asphalt: new T.MeshStandardMaterial({ color: 0x3a4659, roughness: 0.92, metalness: 0.05, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
               apron: new T.MeshStandardMaterial({ color: 0xb4bfcd, roughness: 0.95, metalness: 0.02, transparent: true, opacity: 0.7, depthWrite: false }),
               bldg: new T.MeshStandardMaterial({ color: 0xe8ecf2, roughness: 0.55, metalness: 0.15, envMapIntensity: 0.8, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
+              pad: new T.MeshBasicMaterial({ color: 0xd2dce9, toneMapped: false }),
               taxi: new T.LineBasicMaterial({ transparent: true, opacity: 0.3 }) };
   const skin = (geo, mat) => { const m = new T.Mesh(geo, mat === M.dim ? M.hullDim : M.hull); m.add(new T.Mesh(geo, M.fem)); m.visible = solid; solids.push(m); return m; };
   function applyRender() { M.wire.opacity = solid ? 0.07 : 0.72; M.dim.opacity = solid ? 0.05 : 0.55; M.edge.opacity = solid ? 0.35 : 0.85; solids.forEach(m => m.visible = solid); }
@@ -100,17 +101,22 @@ export function createStage(cv, host, opts = {}) {
     const N = 84, S = 1.4, H = (x, z) => { const d = Math.hypot(x, z), ridge = Math.max(0, d - 18) / 10;
       return GROUND - 0.02 + ridge * ridge * 2.2 * (0.55 + 0.45 * Math.sin(x * 0.23 + Math.cos(z * 0.17) * 2) * Math.cos(z * 0.21 - x * 0.07)); };
     const a = [], P = (i, j) => { const x = (i - N / 2) * S, z = (j - N / 2) * S; return [x, H(x, z), z]; };
-    for (let i = 0; i <= N; i++) for (let j = 0; j < N; j++) { a.push(...P(i, j), ...P(i, j + 1)); a.push(...P(j, i), ...P(j + 1, i)); }
+    const L = (p, q) => { if (Math.hypot(p[0], p[2]) > PAD && Math.hypot(q[0], q[2]) > PAD) a.push(...p, ...q); };   // no grid on the pad
+    for (let i = 0; i <= N; i++) for (let j = 0; j < N; j++) { L(P(i, j), P(i, j + 1)); L(P(j, i), P(j + 1, i)); }
     return seg(a, M.floor);
   })();
   scene.add(floor);
+  const pad = new T.Mesh(new T.CircleGeometry(PAD, 96), M.pad);   // a ground disc inside the ring, set well below the field so the runways' polygonOffset can't sink them into it
+  pad.rotation.x = -Math.PI / 2; pad.position.y = GROUND - 0.15; scene.add(pad);
 
   // ---------- the field: the airport's real layout (north = -z, fitted to the ring), approach lights, the aircraft on final ----------
   // Everything on the field shares one scale, upm (scene units per metre), so it is true to life except the aircraft,
   // drawn PLANE_X times life size (an A320 is 37.6 m nose to tail) so it still reads at dashboard zoom.
-  const AC_LEN = 37.6, PLANE_X = 5, BLDG_H = 18, GLIDE = Math.tan(3 * Math.PI / 180), FINAL = 3000, TD = 300, ROLL = 1500, ALS = 730;
+  const AC_LEN = 37.6, PLANE_X = 10, BLDG_H = 18, GLIDE = Math.tan(3 * Math.PI / 180), FINAL = 3000, TD = 300, ROLL = 1500, ALS = 730;
   const field = new T.Group(); field.position.y = GROUND; scene.add(field);
   const plane = new T.Group(), craft = airliner(); craft.rotation.z = -0.05; plane.add(craft); field.add(plane);
+  const shadow = new T.Mesh(new T.PlaneGeometry(10, 9.6), new T.MeshBasicMaterial({ map: blobTexture(), color: 0x0b1f45, transparent: true, depthWrite: false }));
+  shadow.geometry.rotateX(-Math.PI / 2); field.add(shadow);   // the airliner's footprint (length x span), offset away from the key light
   const approach = new T.Points(new T.BufferGeometry(), M.lights); field.add(approach);
   const rabbit = new T.Mesh(new T.SphereGeometry(0.05, 12, 8), new T.MeshBasicMaterial({ color: 0xffffff })); field.add(rabbit);
   let fieldGroup = null, rwys = [], heading = 0, landDir = 1, thr = [0, 0], dir = [1, 0], upm = FIT / 2500, gearY = 0;
@@ -133,7 +139,7 @@ export function createStage(cv, host, opts = {}) {
   }
   function setAirport(iata, hdg) {
     const f = FIELDS[iata] || Object.values(FIELDS)[0], s = upm = FIT / f.r, P = (x, y) => [x * s, -y * s];
-    craft.scale.setScalar(AC_LEN / 10 * PLANE_X * s); gearY = craft.scale.x;   // the model's engines hang 1 unit below its axis
+    craft.scale.setScalar(AC_LEN / 10 * PLANE_X * s); gearY = craft.scale.x; shadow.scale.setScalar(gearY);   // the model's engines hang 1 unit below its axis
     if (fieldGroup) {   // remove() alone keeps the GPU buffers
       field.remove(fieldGroup); const old = new Set(); fieldGroup.traverse(o => { old.add(o); o.geometry?.dispose(); });
       solids.splice(0, solids.length, ...solids.filter(m => !old.has(m)));
@@ -161,21 +167,23 @@ export function createStage(cv, host, opts = {}) {
     thr = p; dir = [(q[0] - p[0]) / r.len, (q[1] - p[1]) / r.len];
     const a = []; for (let d = 30; d <= ALS; d += 30) a.push(...along(-d * upm, 0.02));   // approach light bars every 100 ft
     approach.geometry.dispose(); approach.geometry = new T.BufferGeometry(); approach.geometry.setAttribute("position", new T.Float32BufferAttribute(a, 3));
-    plane.rotation.y = Math.atan2(dir[1], -dir[0]);   // the airliner's nose is local -x
+    plane.rotation.y = shadow.rotation.y = Math.atan2(dir[1], -dir[0]);   // the airliner's nose is local -x
   }
   const along = (d, y) => [thr[0] + dir[0] * d, y, thr[1] + dir[1] * d];
   function flyPlane(u) {   // u in [0, 1): 0..0.7 final down a 3° glideslope to touchdown TD m past the threshold, 0.7..1 rollout
     if (u < 0.7) { const d = -FINAL + (FINAL + TD) * u / 0.7; plane.position.set(...along(d * upm, gearY + (TD - d) * GLIDE * upm)); craft.rotation.z = -0.05; }
     else { const k = (u - 0.7) / 0.3, e = 1 - (1 - k) * (1 - k); plane.position.set(...along((TD + ROLL * e) * upm, gearY)); craft.rotation.z = -0.05 * (1 - k); }
+    const h = plane.position.y - gearY;   // height above the runway: the shadow slides off with the key light (-6, 7, 5) and fades
+    shadow.position.set(plane.position.x + h * 6 / 7, 0.016, plane.position.z - h * 5 / 7); shadow.material.opacity = 0.55 / (1 + h * 3);
   }
 
   // ---------- capacity ring: one arc per forecast hour (+3 h at north, clockwise), coloured by severity ----------
   const ring = new T.Group(); ring.position.y = GROUND + 0.02; scene.add(ring);
-  ring.add(seg(circle(RR + 0.7, 96), M.dim), seg(circle(RR - 0.7, 96), M.dim));
+  ring.add(seg(circle(RR + 0.4, 96), M.dim), seg(circle(RR - 0.4, 96), M.dim));
   const arcs = [], labels = [];
   let sevs = Array(10).fill(null), hot = null;
   for (let i = 0; i < 10; i++) {
-    const b0 = i * 36 + 1.8, geo = new T.RingGeometry(RR - 0.45, RR + 0.45, 20, 1, Math.PI / 2 - (b0 + 32.4) * Math.PI / 180, 32.4 * Math.PI / 180);
+    const b0 = i * 36 + 1.8, geo = new T.RingGeometry(RR - 0.22, RR + 0.22, 20, 1, Math.PI / 2 - (b0 + 32.4) * Math.PI / 180, 32.4 * Math.PI / 180);
     geo.rotateX(-Math.PI / 2);
     const m = new T.Mesh(geo, new T.MeshBasicMaterial({ transparent: true, opacity: 0.25, side: T.DoubleSide, depthWrite: false })); arcs.push(m); ring.add(m);
     const lb = label(`+${i + 3}h`); const b = (i * 36 + 18) * Math.PI / 180; lb.position.set((RR + 1.8) * Math.sin(b), 0.5, -(RR + 1.8) * Math.cos(b)); labels.push(lb); ring.add(lb);
@@ -209,6 +217,11 @@ export function createStage(cv, host, opts = {}) {
   deck.add(seg(circle(BOX, 96), M.dim)); scene.add(deck);
   const bolt = seg([], M.bolt); scene.add(bolt);
   let flashT = 0, nextFlash = 2;
+  function blobTexture() {
+    const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d"), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.5, "rgba(255,255,255,.45)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new T.CanvasTexture(c);
+  }
   function cloudTexture() {
     const c = document.createElement("canvas"); c.width = c.height = 256; const g = c.getContext("2d");
     for (let i = 0; i < 110; i++) { const x = Math.random() * 256, y = Math.random() * 256, r = 12 + Math.random() * 42;
