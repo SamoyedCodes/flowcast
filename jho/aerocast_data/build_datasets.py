@@ -175,11 +175,15 @@ def attach_taf(q, tafh):
         for c in ("t0_utc", "target_hour_utc", "taf_issued_utc"):
             if c in d:
                 d[c] = to_utc_naive(d[c]).astype("datetime64[ns]")
-    q = q.sort_values("t0_utc")
+    # rows with no t0 (repeated DST hour, missing elapsed time) cannot be matched; keep them without TAF
+    bad = q.t0_utc.isna() | q.target_hour_utc.isna()
     r = r.sort_values("taf_issued_utc")
-    m = pd.merge_asof(q, r, left_on="t0_utc", right_on="taf_issued_utc",
+    m = pd.merge_asof(q[~bad].sort_values("t0_utc"), r, left_on="t0_utc", right_on="taf_issued_utc",
                       by=["airport", "target_hour_utc"], direction="backward",
                       tolerance=pd.Timedelta(hours=12))
+    if bad.any():
+        print(f"[attach_taf] {int(bad.sum()):,} rows without t0 kept with no TAF features")
+        m = pd.concat([m, q[bad]], ignore_index=True)
     m["taf_age_h"] = (m.t0_utc - m.taf_issued_utc).dt.total_seconds() / 3600
     assert (m.taf_issued_utc.isna() | (m.taf_issued_utc <= m.t0_utc)).all(), "TAF leakage"
     return m
