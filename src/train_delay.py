@@ -7,11 +7,12 @@ Protocol (everything time-ordered, nothing shuffled):
     (expanding window), at a near and a far lead.  Candidates: L2-regularised logistic regression and LightGBM.
     The data are small (about 1,500 severe events) and the signal weak and mostly additive, so the regularised
     linear model wins; the selection table is saved so this is visible, not assumed.
-  * calibration: Platt scaling fitted on those out-of-fold predictions
+  * calibration: Platt scaling fitted on those out-of-fold predictions, kept only if a fit on 2024 Q1-Q3 lowers
+    the Brier score on 2024 Q4 (otherwise the raw probability is shipped)
   * final model: refit on all data before 2025-01-01
   * test: 2025-01..2025-07, touched once
 Ablation ladder (does each information source earn its place?):
-  A schedule only | B + recent hub performance | C + METAR weather | D + TAF forecast (full model)
+  A schedule only | B + recent hub performance | C + METAR weather | D + TAF forecast | E + BTS airport traffic (full model)
 """
 import json
 
@@ -36,6 +37,7 @@ SCHED = ["hour_local", "dow", "month", "is_weekend", "hour_sin", "hour_cos", "do
 NOT_FEATURES = {"flight_id", "event_utc", "event_hour_utc", "delay_min", "severe_delay", "lead_h", "issue_utc",
                 "obs_hour_utc", "split", "hour_utc"}
 TUNE_LEADS = (3, 12)
+FINAL = "E_plus_bts"
 FOLD_STARTS = ["2024-01-01", "2024-04-01", "2024-07-01", "2024-10-01", "2025-01-01"]
 
 # candidate models: name -> (family, params)
@@ -50,9 +52,11 @@ def groups(t):
     cols = set(t.columns) - NOT_FEATURES
     rec = sorted(c for c in cols if c.startswith("rec_"))
     taf = sorted(c for c in cols if c.startswith("taf_"))
-    obs = sorted(cols - set(rec) - set(taf) - set(SCHED) - set(CATS))
+    bts = sorted(c for c in cols if c.startswith("bts_"))
+    obs = sorted(cols - set(rec) - set(taf) - set(bts) - set(SCHED) - set(CATS))
     return {"A_schedule": CATS + SCHED, "B_plus_recent_hub": CATS + SCHED + rec,
-            "C_plus_metar": CATS + SCHED + rec + obs, "D_plus_taf": CATS + SCHED + rec + obs + taf}
+            "C_plus_metar": CATS + SCHED + rec + obs, "D_plus_taf": CATS + SCHED + rec + obs + taf,
+            FINAL: CATS + SCHED + rec + obs + taf + bts}
 
 
 def prep(t):
@@ -143,6 +147,17 @@ def platt(p_oof, y):
     return float(lr.coef_[0, 0]), float(lr.intercept_[0])
 
 
+def accepted_platt(p_oof, y_oof, t_oof):
+    """Platt (a, b) if a fit on the first three OOF quarters lowers the Brier score on the last one, else identity (1, 0).
+    The accepted transform is then refit on all OOF predictions."""
+    early = np.asarray(pd.to_datetime(t_oof, utc=True) < pd.Timestamp(FOLD_STARTS[-2], tz="UTC"))
+    a, b = platt(p_oof[early], y_oof[early])
+    late_y, late_p = y_oof[~early], p_oof[~early]
+    if brier_score_loss(late_y, apply_platt(late_p, a, b)) >= brier_score_loss(late_y, late_p):
+        return 1.0, 0.0
+    return platt(p_oof, y_oof)
+
+
 def apply_platt(p, a, b):
     z = np.log(np.clip(p, 1e-6, 1 - 1e-6) / (1 - np.clip(p, 1e-6, 1 - 1e-6)))
     return 1 / (1 + np.exp(-(a * z + b)))
@@ -166,7 +181,7 @@ def main():
     G = groups(t)
     C.MODELS.mkdir(exist_ok=True, parents=True)
     C.REPORTS.mkdir(exist_ok=True, parents=True)
-    json.dump(G["D_plus_taf"], open(C.MODELS / "delay_features.json", "w"))
+    json.dump(G[FINAL], open(C.MODELS / "delay_features.json", "w"))
     print({k: len(v) for k, v in G.items()})
     pre = t[t["split"] != "test"]
 
@@ -176,7 +191,7 @@ def main():
         scores = {}
         for lead in TUNE_LEADS:
             d = pre[pre.lead_h == lead]
-            p, idx = oof(d, G["D_plus_taf"], fam, params)
+            p, idx = oof(d, G[FINAL], fam, params)
             scores[lead] = average_precision_score(d.loc[idx, "severe_delay"].values, p)
         sel.append({"candidate": name, "family": fam, **{f"oof_pr_auc_lead{l}": v for l, v in scores.items()},
                     "oof_pr_auc_mean": float(np.mean(list(scores.values())))})
@@ -197,19 +212,19 @@ def main():
         d_pre, d_te = d_all[d_all.split != "test"], d_all[d_all.split == "test"]
         yte = d_te["severe_delay"].values
         for gname, feats in G.items():
-            if gname != "D_plus_taf" and lead not in TUNE_LEADS:
+            if gname != FINAL and lead not in TUNE_LEADS:
                 continue                                                  # ablations only at the two reference leads
             p_oof, idx = oof(d_pre, feats, fam, params)
             y_oof = d_pre.loc[idx, "severe_delay"].values
-            a, b = platt(p_oof, y_oof)
+            a, b = accepted_platt(p_oof, y_oof, d_pre.loc[idx, "event_utc"].values)
             bundle = fit_model(d_pre, feats, fam, params)
             raw = predict_bundle(bundle, d_te)
             cal = apply_platt(raw, a, b)
             rows.append({"lead_h": lead, "model": gname, "variant": "raw", "scope": "all", **metrics(yte, raw)})
             rows.append({"lead_h": lead, "model": gname, "variant": "calibrated", "scope": "all", **metrics(yte, cal)})
-            if gname == "D_plus_taf":
+            if gname == FINAL:
                 joblib.dump({**bundle, "platt": {"a": a, "b": b}}, C.MODELS / f"delay_lead{lead}.joblib")
-                calib[lead] = {"a": a, "b": b}
+                calib[lead] = {"a": a, "b": b, "accepted": (a, b) != (1.0, 0.0)}
                 for scope_col in ("direction", "airport"):
                     for v in sorted(d_te[scope_col].astype(str).unique()):
                         mk = (d_te[scope_col].astype(str) == v).values
@@ -220,11 +235,11 @@ def main():
                     imp = explain_bundle(bundle, d_te).abs().mean().sort_values(ascending=False)
                     imp.to_csv(C.REPORTS / f"delay_driver_importance_lead{lead}.csv", header=["mean_abs_contribution_logodds"])
         # comparison model (best LightGBM, full features) and trivial baseline
-        lg = fit_model(d_pre, G["D_plus_taf"], lg_fam, lg_params)
+        lg = fit_model(d_pre, G[FINAL], lg_fam, lg_params)
         rows.append({"lead_h": lead, "model": "lightgbm_comparison", "variant": "raw", "scope": "all", **metrics(yte, predict_bundle(lg, d_te))})
         rows.append({"lead_h": lead, "model": "constant_base_rate", "variant": "raw", "scope": "all",
                      **metrics(yte, np.full(len(yte), d_pre["severe_delay"].mean()))})
-        full = [r for r in rows if r["lead_h"] == lead and r["model"] == "D_plus_taf" and r["variant"] == "calibrated" and r["scope"] == "all"][0]
+        full = [r for r in rows if r["lead_h"] == lead and r["model"] == FINAL and r["variant"] == "calibrated" and r["scope"] == "all"][0]
         cmp_ = [r for r in rows if r["lead_h"] == lead and r["model"] == "lightgbm_comparison"][0]
         print(f"lead {lead:2d}h  chosen PR-AUC {full['pr_auc']:.3f}  ROC {full['roc_auc']:.3f}  brier {full['brier']:.4f}  | LightGBM PR-AUC {cmp_['pr_auc']:.3f}")
 
@@ -241,10 +256,10 @@ def main():
         d = t[(t.lead_h == lead) & (t.split == "test")].reset_index(drop=True)
         dp = t[(t.lead_h == lead) & (t.split != "test")]
         pr = {}
-        for gname in ("A_schedule", "D_plus_taf"):
+        for gname in ("A_schedule", FINAL):
             feats = G[gname]
             p_oof, idx = oof(dp, feats, fam, params)
-            a, b = platt(p_oof, dp.loc[idx, "severe_delay"].values)
+            a, b = accepted_platt(p_oof, dp.loc[idx, "severe_delay"].values, dp.loc[idx, "event_utc"].values)
             pr[gname] = apply_platt(predict_bundle(fit_model(dp, feats, fam, params), d), a, b)
         day = d["event_utc"].dt.floor("D").astype(str).values
         days = np.unique(day)
@@ -253,7 +268,7 @@ def main():
         for _ in range(300):
             sel_idx = np.concatenate([by_day[x] for x in rng.choice(days, len(days))])
             y = d["severe_delay"].values[sel_idx]
-            gains.append(average_precision_score(y, pr["D_plus_taf"][sel_idx]) - average_precision_score(y, pr["A_schedule"][sel_idx]))
+            gains.append(average_precision_score(y, pr[FINAL][sel_idx]) - average_precision_score(y, pr["A_schedule"][sel_idx]))
         boot.append({"lead_h": lead, "pr_auc_gain_mean": float(np.mean(gains)), "ci_low": float(np.percentile(gains, 2.5)),
                      "ci_high": float(np.percentile(gains, 97.5))})
     pd.DataFrame(boot).to_csv(C.REPORTS / "delay_bootstrap.csv", index=False)
@@ -280,7 +295,7 @@ def main():
     r = res[(res.scope == "all") & ((res.variant == "calibrated") | res.model.isin(["constant_base_rate", "lightgbm_comparison"]))]
     print("\nTEST PR-AUC (prevalence in brackets)\n", r.pivot_table(index="model", columns="lead_h", values="pr_auc").round(3))
     print("\nTEST ROC-AUC\n", r.pivot_table(index="model", columns="lead_h", values="roc_auc").round(3))
-    print("\nbootstrap PR-AUC gain (D - A)\n", pd.DataFrame(boot).round(4))
+    print(f"\nbootstrap PR-AUC gain ({FINAL} - A)\n", pd.DataFrame(boot).round(4))
 
 
 if __name__ == "__main__":

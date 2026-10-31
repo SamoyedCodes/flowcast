@@ -4,6 +4,8 @@ models/
 # downloaded sources (TAF, BTS, airports) and Stage 1 outputs, verified by .source.json receipts
 data/external/
 data/stage1/
+# superseded by data/external/taf/ (Keith's earlier TAF download)
+data/weather/raw_taf/
 # stale first-prototype output
 data/model/
 __pycache__/

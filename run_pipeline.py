@@ -2,7 +2,7 @@
 
     python run_pipeline.py                 # everything (downloads are cached; reruns skip files already on disk)
     python run_pipeline.py --sensitivity   # also re-run the AAR-assumption sensitivity study (~8 min)
-    python run_pipeline.py --skip-download # use the cached raw weather only
+    python run_pipeline.py --skip-download # offline: use the cached sources only (must already be complete)
 
 Then:  streamlit run dashboard/app.py
 """
@@ -11,6 +11,7 @@ import time
 
 import pandas as pd
 
+import stage1_pipeline
 from src import config as C, download, features, sensitivity, taf as tafmod, train_aar, train_delay, weather
 
 
@@ -27,12 +28,12 @@ def main():
 
     for d in (C.PROC, C.MODELS, C.REPORTS):
         d.mkdir(parents=True, exist_ok=True)
-    t = stage("1/5 download METAR + TAF (Iowa State Mesonet)")
-    if args.skip_download:
-        print("skipped")
-    else:
+    t = stage("1/5 download METAR, TAF + validity metadata (Iowa State Mesonet), BTS traffic (about 1 GB once)")
+    if not args.skip_download:
         download.download_asos()
-        download.download_taf()
+    # offline mode still validates every cached file against its receipt
+    stage1_pipeline.download_sources(C.EXTERNAL, pd.Timestamp(C.SOURCE_START), pd.Timestamp(C.SOURCE_END),
+                                     offline=args.skip_download)
     print(f"{time.time() - t:.0f}s")
 
     t = stage("2/5 clean METAR -> hourly weather, runway wind components, weather-adjusted AAR")
@@ -52,6 +53,7 @@ def main():
 
     t = stage("4/5 train + evaluate AAR forecaster")
     train_aar.main()
+    sensitivity.validate_against_traffic(hourly)
     print(f"{time.time() - t:.0f}s")
 
     t = stage("5/5 train + evaluate severe-delay classifier")

@@ -67,7 +67,6 @@ def test_taf_issued_before_forecast_time():
     a = pd.read_parquet(PROC / "aar_table.parquet", columns=["taf_age_h", "lead_h"]).dropna()
     # age = target hour - TAF issue time; a TAF used at lead h must have been issued at least h hours before the hour
     assert (a["taf_age_h"] >= a["lead_h"] - 1e-6).all()
-    assert (a["taf_age_h"] <= taf.MAX_AGE_H).all()
 
 
 @needs_data
@@ -91,6 +90,55 @@ def test_aar_target_range_and_missing():
     a = pd.read_parquet(PROC / "aar_table.parquet", columns=["y_ratio", "airport"])
     assert a["y_ratio"].between(0.3, 1.0001).all()
     assert a["airport"].nunique() == len(C.AIRPORTS)
+
+
+def _taf_group(pid, issue, valid_from, valid_to, vis, invalid=False):
+    ts = lambda h: pd.Timestamp("2024-03-01", tz="UTC") + pd.Timedelta(hours=h)
+    return {"product_id": pid, "issue": ts(issue), "valid_from": ts(valid_from), "valid_to": ts(valid_to),
+            "validity_invalid": invalid, "kind": "base", "start": ts(valid_from), "end": ts(valid_to), "is_prob": False,
+            "vis_mi": vis, "ceiling_ft": np.nan, "xwind_kt": 0.0, "tail_kt": 0.0, "peak_kt": 5.0, "thunder": False,
+            "winter": False, "precip": False, "gust_kt": 0.0, "wind_kt": 5.0}
+
+
+def test_expired_newest_taf_is_missing_not_an_older_fallback():
+    groups = pd.DataFrame([_taf_group("old", 0, 0, 24, 6.0), _taf_group("short", 6, 6, 12, 2.0),
+                           _taf_group("bad", 13, 13, 30, 1.0, invalid=True)])
+    hours = pd.DatetimeIndex(["2024-03-01 09:00", "2024-03-01 15:00", "2024-03-01 18:00"], tz="UTC")
+    out, _, _ = taf._lookup(groups, hours, (3,))
+    # 09Z: newest issued by 06Z is 'short' and covers 09Z.  15Z: newest by 12Z is 'short', expired at 12Z -> missing,
+    # even though 'old' still covers 15Z.  18Z: newest by 15Z has malformed validity -> missing.
+    assert out["vis_mi"][0] == 2.0 and np.isnan(out["vis_mi"][1]) and np.isnan(out["vis_mi"][2])
+
+
+def test_stale_weather_keeps_the_row_but_blanks_the_values():
+    hour = lambda h, m=0: pd.Timestamp("2024-03-01", tz="UTC") + pd.Timedelta(hours=h, minutes=m)
+    last_real = hour(0, 50)
+    hw = pd.DataFrame({"airport": "KATL", "obs_hour_utc": [hour(h) for h in range(5)],
+                       "known_at_utc": [last_real] + [hour(h, 59) for h in range(1, 5)],
+                       "last_obs_utc": last_real, "wx_obs_missing": [0, 1, 1, 1, 1], "temp_c": 20.0})
+    rows = pd.DataFrame({"airport": "KATL", "issue_utc": [hour(2, 30), hour(4, 59)]})
+    m = features.attach_state(rows, hw)
+    assert len(m) == 2 and list(m["wx_stale"]) == [0, 1]
+    assert m["temp_c"].iloc[0] == 20.0 and np.isnan(m["temp_c"].iloc[1])
+    assert "last_obs_utc" not in m and list(m["wx_obs_missing"]) == [1, 1]
+
+
+def test_purge_window_and_flights_spanning_the_test_boundary():
+    start = pd.Timestamp(C.VAL_END, tz="UTC")
+    t = pd.DataFrame({"flight_id": [1, 1, 2, 3, 4],
+                      "event_utc": [start - pd.Timedelta(hours=2), start + pd.Timedelta(days=1, hours=1),
+                                    start + pd.Timedelta(hours=3), start + pd.Timedelta(days=2), start - pd.Timedelta(days=9)]})
+    t["split"] = features.split_of(t["event_utc"])
+    assert list(t["split"]) == ["val", "test", "purged", "test", "val"]
+    kept = features.drop_purged(t)
+    # flight 1 spans val/test and flight 2 sits in the purge window: neither may reach training
+    assert list(kept["flight_id"]) == [3, 4] and "purged" not in set(kept["split"])
+
+
+@needs_data
+def test_delay_table_has_no_purged_rows():
+    t = pd.read_parquet(PROC / "delay_table.parquet", columns=["flight_id", "split"])
+    assert "purged" not in set(t["split"]) and (t.groupby("flight_id")["split"].nunique() == 1).all()
 
 
 def test_heading_fallback_uses_prevailing_wind():

@@ -2,7 +2,9 @@
 
 For a target hour T and a forecast lead h, take the newest TAF issued at or before T - h and read what
 it said about hour T.  Because only TAFs issued before the forecast time are used, this is a genuine
-"what did forecasters know at the time" feature (no look-ahead).
+"what did forecasters know at the time" feature (no look-ahead).  That TAF must also be valid at T, using
+the IEM issuance/validity metadata (stage1_pipeline.normalize_taf); an expired, not-yet-valid or malformed
+newest TAF gives missing values rather than falling back to an older one.
 
 Per TAF product:
   * base groups  = the initial group ('Observation' rows) + every FM group; the base for hour T is the
@@ -11,14 +13,14 @@ Per TAF product:
     case the forecaster expects, not the prevailing condition)
 """
 import ast
+import json
 
 import numpy as np
 import pandas as pd
 
+import stage1_pipeline
 from . import aar, config as C
 from .weather import wind_components
-
-MAX_AGE_H = 30          # a TAF is valid for 24-30 h; older products are ignored
 
 
 def _list(x):
@@ -31,12 +33,15 @@ def _list(x):
 
 
 def read_raw(icao):
-    files = sorted(C.RAW_TAF.glob(f"taf_{icao}_*.csv"))
+    """TAF groups joined to their product's issuance/validity metadata (one CSV + one JSON per month)."""
+    iata = C.AIRPORTS[icao]["iata"]
+    files = sorted((C.EXTERNAL / "taf").glob(f"{iata}_????-??.csv"))
     if not files:
-        raise FileNotFoundError(f"no TAF files for {icao}; run python -m src.download")
-    d = pd.concat([pd.read_csv(p, low_memory=False) for p in files], ignore_index=True)
-    d = d.drop_duplicates(["product_id", "fx_valid", "ftype", "raw"])
-    return d
+        raise FileNotFoundError(f"no TAF files for {iata}; run python run_pipeline.py")
+    segments = pd.concat([pd.read_csv(p, low_memory=False) for p in files], ignore_index=True)
+    metadata = pd.concat([pd.DataFrame(json.loads(p.with_suffix(".json").read_text())["data"]) for p in files],
+                         ignore_index=True)
+    return stage1_pipeline.normalize_taf(segments, metadata)[0]
 
 
 def parse_groups(icao):
@@ -45,7 +50,10 @@ def parse_groups(icao):
     heading = C.AIRPORTS[icao]["runway_heading_deg"]
     out = pd.DataFrame({
         "product_id": d["product_id"],
-        "issue": pd.to_datetime(d["valid"], utc=True),
+        "issue": d["issued_utc"],
+        "valid_from": d["valid_from_utc"],
+        "valid_to": d["valid_to_utc"],
+        "validity_invalid": d["validity_invalid"],
         "start": pd.to_datetime(d["fx_valid"], utc=True),
         "end": pd.to_datetime(d["fx_valid_end"], utc=True),
         "kind": np.where(d["ftype"].isin(["Observation", "Forecast"]), "base", "change"),
@@ -79,9 +87,10 @@ BIG = 10 ** 12
 
 
 def _lookup(groups, hours, leads):
-    """Vectorised: for every (lead, hour) find the newest TAF issued <= hour - lead and read its
-    base group for that hour, then widen the 'worst case' with overlapping TEMPO / PROB30 groups."""
-    prods = groups.drop_duplicates("product_id")[["product_id", "issue"]].sort_values("issue").reset_index(drop=True)
+    """Vectorised: for every (lead, hour) find the newest TAF issued <= hour - lead, require it to be valid
+    for that hour, read its base group, then widen the 'worst case' with overlapping TEMPO / PROB30 groups."""
+    prods = (groups.drop_duplicates("product_id")[["product_id", "issue", "valid_from", "valid_to", "validity_invalid"]]
+             .sort_values(["issue", "product_id"]).reset_index(drop=True))
     pidx = {pid: i for i, pid in enumerate(prods["product_id"])}
     issue_ns = prods["issue"].values.astype("datetime64[ns]")
     sec = lambda x: pd.DatetimeIndex(x).values.astype("datetime64[ns]").astype("int64") // 10 ** 9
@@ -98,8 +107,11 @@ def _lookup(groups, hours, leads):
     lead_arr = np.repeat(list(leads), n)
     cut = np.tile(hours.values.astype("datetime64[ns]"), len(leads)) - lead_arr.astype("timedelta64[h]")
     lp = np.searchsorted(issue_ns, cut, side="right") - 1                      # newest product issued before cut
-    age_h = (t_sec - np.where(lp >= 0, issue_ns[np.clip(lp, 0, None)].astype("int64") // 10 ** 9, 0)) / 3600
-    ok = (lp >= 0) & (age_h <= MAX_AGE_H)
+    lpc = np.clip(lp, 0, None)
+    age_h = (t_sec - np.where(lp >= 0, issue_ns[lpc].astype("int64") // 10 ** 9, 0)) / 3600
+    # the newest TAF must cover hour T (validity end exclusive); malformed validity metadata is unusable
+    ok = ((lp >= 0) & ~prods["validity_invalid"].values[lpc].astype(bool)
+          & (sec(prods["valid_from"])[lpc] <= t_sec) & (t_sec < sec(prods["valid_to"])[lpc]))
     bi = np.searchsorted(bkey, np.where(ok, lp, 0).astype("int64") * BIG + t_sec, side="right") - 1
     ok &= (bi >= 0) & (base["pi"].values[np.clip(bi, 0, None)] == lp)
 

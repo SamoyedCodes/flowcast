@@ -37,7 +37,7 @@ aar_all = am[(am.scope == "all") & am.rmse_aar.notna()]
 R = lambda model, lead, col="rmse_aar": float(aar_all[(aar_all.model == model) & (aar_all.lead_h == lead)][col].iloc[0])
 dl = dm[(dm.scope == "all") & ((dm.variant == "calibrated") | dm.model.isin(["logit_schedule_only", "constant_base_rate"]))]
 D = lambda model, lead, col="pr_auc": float(dl[(dl.model == model) & (dl.lead_h == lead)][col].iloc[0])
-full = lambda lead, col: float(dm[(dm.model == "D_plus_taf") & (dm.variant == "calibrated") & (dm.scope == "all") & (dm.lead_h == lead)][col].iloc[0])
+full = lambda lead, col: float(dm[(dm.model == "E_plus_bts") & (dm.variant == "calibrated") & (dm.scope == "all") & (dm.lead_h == lead)][col].iloc[0])
 pa = pd.read_parquet(C.PROC / "aar_predictions.parquet")
 pa = pa[pa.split == "test"]
 
@@ -413,15 +413,16 @@ text(s, 8.5, 4.8, 4.3, 0.9, [[(f"{cau3[0]:.0%}", {"size": 36, "bold": True, "col
 text(s, 8.5, 6.15, 4.3, 0.5, "+3 h, 2025 test. The duty manager picks the trade-off.", size=12, color=MUTED, italic=True)
 
 # ===================================================================================== 8. delay ablation
-s = new_slide("Each information source earns its place for delay risk", notes=(
+s = new_slide("Weather earns its place for delay risk; airport traffic adds little", notes=(
     "This is the ablation ladder for the severe-delay classifier, scored by PR-AUC, the right metric when only about 13 percent of flights are severe. A random guess scores the prevalence. "
     "Schedule alone gives 0.22. Adding how the hub has been performing in the last hours helps a little. Adding METAR weather is the big step at 3 hours. Adding the TAF forecast helps most at 12 hours, when observations are stale. "
+    f"Adding airport-wide BTS traffic barely moves it ({D('D_plus_taf', 3):.3f} to {D('E_plus_bts', 3):.3f} at 3 hours), so the sample's own recent-hub signal already carries most of it. "
     f"We bootstrapped by day: the gain of the full model over schedule-only is {boot.loc[3, 'pr_auc_gain_mean']:+.3f} at 3 hours (95% interval {boot.loc[3, 'ci_low']:+.3f} to {boot.loc[3, 'ci_high']:+.3f}) "
     f"and {boot.loc[12, 'pr_auc_gain_mean']:+.3f} at 12 hours ({boot.loc[12, 'ci_low']:+.3f} to {boot.loc[12, 'ci_high']:+.3f}). Both intervals exclude zero."))
 cd = CategoryChartData()
-cd.categories = ["Schedule only", "+ recent hub delays", "+ METAR weather", "+ TAF forecast"]
-cd.add_series("3 h ahead", [round(D(m, 3), 3) for m in ("A_schedule", "B_plus_recent_hub", "C_plus_metar", "D_plus_taf")])
-cd.add_series("12 h ahead", [round(D(m, 12), 3) for m in ("A_schedule", "B_plus_recent_hub", "C_plus_metar", "D_plus_taf")])
+cd.categories = ["Schedule only", "+ recent hub delays", "+ METAR weather", "+ TAF forecast", "+ BTS airport traffic"]
+cd.add_series("3 h ahead", [round(D(m, 3), 3) for m in ("A_schedule", "B_plus_recent_hub", "C_plus_metar", "D_plus_taf", "E_plus_bts")])
+cd.add_series("12 h ahead", [round(D(m, 12), 3) for m in ("A_schedule", "B_plus_recent_hub", "C_plus_metar", "D_plus_taf", "E_plus_bts")])
 gf = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(1.45), Inches(8.0), Inches(5.35), cd)
 ch = gf.chart
 style_chart(ch, legend=True, size=13, title=f"Severe-delay ranking quality on 2025 data (PR-AUC; chance = {prev:.2f})")
@@ -435,17 +436,17 @@ pl.data_labels.number_format_is_linked = False
 pl.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
 ch.value_axis.minimum_scale = 0
 ch.value_axis.maximum_scale = 0.4
-stat(s, 9.0, 1.5, 3.7, f"{D('D_plus_taf', 3):.2f}", f"PR-AUC at +3 h vs {D('A_schedule', 3):.2f} schedule-only and {prev:.2f} chance", SKY, big_size=48)
+stat(s, 9.0, 1.5, 3.7, f"{D('E_plus_bts', 3):.2f}", f"PR-AUC at +3 h vs {D('A_schedule', 3):.2f} schedule-only and {prev:.2f} chance", SKY, big_size=48)
 card(s, 9.0, 3.6, 3.73, 3.2)
 text(s, 9.25, 3.8, 3.5, 0.35, "HOW SURE ARE WE?", size=13, bold=True, color=SKY)
 text(s, 9.25, 4.2, 3.3, 2.5, [f"Gain over schedule-only, bootstrapped by day (95% interval):",
                                [(f"+3 h:  {boot.loc[3, 'pr_auc_gain_mean']:+.3f}  ({boot.loc[3, 'ci_low']:+.3f} to {boot.loc[3, 'ci_high']:+.3f})", {"bold": True, "color": NAVY})],
                                [(f"+12 h: {boot.loc[12, 'pr_auc_gain_mean']:+.3f}  ({boot.loc[12, 'ci_low']:+.3f} to {boot.loc[12, 'ci_high']:+.3f})", {"bold": True, "color": NAVY})],
                                "Both intervals exclude zero. Weather adds real, if modest, skill.",
-                               [(f"Model chosen out-of-fold: regularised logistic regression beat LightGBM ({D('D_plus_taf', 3):.2f} vs {LG(3):.2f} at +3 h, {D('D_plus_taf', 12):.2f} vs {LG(12):.2f} at +12 h).", {"italic": True, "color": MUTED})]], size=14, color=INK)
+                               [(f"Model chosen out-of-fold on 2024: regularised logistic regression. On 2025 it ties or beats LightGBM ({D('E_plus_bts', 3):.2f} vs {LG(3):.2f} at +3 h, {D('E_plus_bts', 12):.2f} vs {LG(12):.2f} at +12 h).", {"italic": True, "color": MUTED})]], size=14, color=INK)
 
 # ===================================================================================== 9. trust: calibration
-dep3 = dm[(dm.model == "D_plus_taf") & (dm.variant == "calibrated") & (dm.lead_h == 3)].set_index("scope")
+dep3 = dm[(dm.model == "E_plus_bts") & (dm.variant == "calibrated") & (dm.lead_h == 3)].set_index("scope")
 s = new_slide("Predicted risk tracks what actually happens", notes=(
     "A risk score is only useful if the number means something. We split 2025 flights into ten equal groups by predicted risk. "
     f"The line shows predicted against observed; they track closely. The top tenth of flights has about {rel3.observed.iloc[-1]:.0%} observed severe-delay rate versus {prev:.0%} overall. "
@@ -553,7 +554,7 @@ s = new_slide("What improves, and what comes next", dark=True, notes=(
     "We do not claim minutes saved or fuel saved: that needs a trial with real traffic managers. Next steps are logged AAR data, more airports, a live feed, and a user trial."))
 stat(s, 0.6, 1.5, 3.9, f"{100 * (1 - R('lightgbm', 12) / R('persistence', 12)):.0f}%", "lower AAR error than the reactive baseline at +12 h", SKY, big_size=60, dark=True)
 stat(s, 0.6, 3.6, 3.9, f"{bal3[1]:.0%}  /  {cau3[1]:.0%}", "of real capacity cuts flagged 3 h ahead (balanced / cautious)", AMBER, big_size=44, dark=True)
-stat(s, 4.9, 1.5, 3.9, f"{D('D_plus_taf', 3) / prev:.1f}×", f"better than chance at spotting severe delays +3 h ahead (PR-AUC {D('D_plus_taf', 3):.2f} vs {prev:.2f})", GREEN, big_size=60, dark=True)
+stat(s, 4.9, 1.5, 3.9, f"{D('E_plus_bts', 3) / prev:.1f}×", f"better than chance at spotting severe delays +3 h ahead (PR-AUC {D('E_plus_bts', 3):.2f} vs {prev:.2f})", GREEN, big_size=60, dark=True)
 stat(s, 4.9, 3.6, 3.9, "10 tests", "guard against look-ahead, wrong wind geometry and broken splits", SKY, big_size=44, dark=True)
 card(s, 9.2, 1.5, 3.53, 5.0, fill=DEEP)
 text(s, 9.45, 1.7, 3.0, 0.35, "NEXT STEPS", size=13, bold=True, color=AMBER)

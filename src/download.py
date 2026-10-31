@@ -1,7 +1,9 @@
-"""Download public weather data from the Iowa State Mesonet archive (no manual steps, cached on disk).
+"""Download METAR observations from the Iowa State Mesonet archive (no manual steps, cached on disk).
 
   * ASOS/METAR observations  -> data/weather/raw/asos_<IATA>_<start>_<end>.csv
-  * TAF forecasts            -> data/weather/raw_taf/taf_<ICAO>_<start>_<end>.csv
+
+TAF forecasts with their validity metadata, BTS traffic and airport time zones are fetched by
+stage1_pipeline.download_sources into data/external/ (validated, hash receipts, offline replay).
 
 Re-running only fetches chunks that are missing.   python -m src.download
 """
@@ -17,7 +19,6 @@ from . import config as C
 
 UA = {"User-Agent": "acacia-hackathon-challenge5 (student project)"}
 ASOS_URL = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
-TAF_URL = "https://mesonet.agron.iastate.edu/cgi-bin/request/taf.py"
 
 
 def chunks(start, end, freq):
@@ -69,36 +70,6 @@ def download_asos(icaos=None):
     return out
 
 
-def _taf_text(icao, sts, ets, depth=0):
-    """One TAF request; if the server keeps truncating the response, split the range in half and join."""
-    params = dict(station=icao, sts=f"{sts}T00:00Z", ets=f"{ets}T00:00Z", fmt="csv")
-    try:
-        return _get(TAF_URL, params, ("station,valid",), retries=2 if depth < 3 else 4)
-    except Exception:
-        a, b = pd.Timestamp(sts), pd.Timestamp(ets)
-        if depth >= 3 or (b - a).days <= 1:
-            raise
-        mid = (a + (b - a) / 2).floor("D").strftime("%Y-%m-%d")
-        print(f"  splitting {sts} -> {ets} at {mid}")
-        first, second = _taf_text(icao, sts, mid, depth + 1), _taf_text(icao, mid, ets, depth + 1)
-        return first + second.split("\n", 1)[1]
-
-
-def download_taf(icaos=None):
-    C.RAW_TAF.mkdir(parents=True, exist_ok=True)
-    out = []
-    for icao in icaos or C.AIRPORTS:
-        for sts, ets in chunks(C.START, C.END, "Q"):
-            path = C.RAW_TAF / f"taf_{icao}_{sts}_{ets}.csv"
-            if not path.exists():
-                print(f"downloading TAF {icao} {sts} -> {ets}")
-                path.write_text(_taf_text(icao, sts, ets), encoding="utf-8")
-                time.sleep(2)
-            out.append(path)
-    return out
-
-
 if __name__ == "__main__":
     download_asos()
-    download_taf()
     print("done")

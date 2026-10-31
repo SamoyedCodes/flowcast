@@ -121,7 +121,7 @@ An airport can land only so many aircraft per hour. That number is the **Arrival
 * *"Where does the AAR label come from?"* FAA-published called rates by weather category plus reductions I chose. Proxy, validated against real flights, stress-tested, and flagged.
 * *"Why not predict raw wind speed effects?"* Because crosswind and tailwind relative to the runway matter, not speed. That is why the headings are in the config.
 * *"Why not an LLM?"* The task is numeric forecasting; an LLM would be the wrong tool. The explanations come from the model's own feature contributions and rule-based text.
-* *"Why logistic regression and not boosting or a neural network for delay?"* Because I tested it: out-of-fold on 2024 and on the 2025 test year it beat LightGBM, with only about 1,900 severe events and a weak, mostly additive signal. The selection table is in the repo. It is also easier to explain: each flight's risk drivers are exact coefficient contributions.
+* *"Why logistic regression and not boosting or a neural network for delay?"* Because I tested it: out-of-fold on 2024 it beat LightGBM, and on the 2025 test year it ties at 3 h and wins at longer leads, with only about 1,900 severe events and a weak, mostly additive signal. The selection table is in the repo. It is also easier to explain: each flight's risk drivers are exact coefficient contributions.
 * *"What would you do with more time?"* Real AAR logs; NOAA storm logs (not used: I did not integrate them); more airports; a live feed; a trial with traffic managers to measure delay saved.
 * *"What did you not do?"* No NOAA storm-log integration; no live feed; no claim of minutes or fuel saved.
 

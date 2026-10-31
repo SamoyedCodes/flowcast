@@ -3,24 +3,31 @@
 AAR table   : one row per (airport, target hour T, lead h).  Features come from the latest METAR hour that
               had been *published* at the issue time T - h, plus the newest TAF issued before T - h.
 Delay table : one row per (flight event, lead h).  The flight event is a departure from, or an arrival at,
-              a configured hub; the issue time is the scheduled event time minus h.
+              a configured hub; the issue time is the scheduled event time minus h.  Airport-wide BTS traffic
+              context comes from stage1_pipeline.attach_bts.
 
-Nothing recorded after the issue time is ever used (asserted in code).
+Nothing recorded after the issue time is ever used (asserted in code).  Weather whose last real observation
+is more than MAX_WX_AGE old at the issue time is treated as unknown, not carried forward.
 """
 import numpy as np
 import pandas as pd
 
+import stage1_pipeline
 from . import config as C, taf as tafmod
 
 NO_CEILING_FT = 12_000                      # fill for "no ceiling reported" (a has_ceiling flag keeps the information)
 FCAT = {"VFR": 0, "MVFR": 1, "IFR": 2, "LIFR": 3}
+MAX_WX_AGE = pd.Timedelta(hours=2)          # same limit as stage1_pipeline.attach_metar
+PURGE = pd.Timedelta(days=1)                # events this soon after the test start are dropped
 
 
 def split_of(ts):
-    """train / val / test by UTC time; shared by both tasks so no leakage across them."""
+    """train / val / test by UTC time; shared by both tasks so no leakage across them.  The first PURGE of the
+    test period is 'purged' so test labels never sit next to the last pre-test training labels."""
     ts = pd.DatetimeIndex(ts)
-    return np.select([ts >= pd.Timestamp(C.VAL_END, tz="UTC"), ts >= pd.Timestamp(C.TRAIN_END, tz="UTC")],
-                     ["test", "val"], "train")
+    test = pd.Timestamp(C.VAL_END, tz="UTC")
+    return np.select([ts >= test + PURGE, ts >= test, ts >= pd.Timestamp(C.TRAIN_END, tz="UTC")],
+                     ["test", "purged", "val"], "train")
 
 
 # --------------------------------------------------------------------------------------------------
@@ -34,6 +41,8 @@ def hourly_features(hourly):
         f["airport"] = ap
         f["known_at_utc"] = g["known_at_utc"]
         f["wx_obs_missing"] = (g["n_obs"] == 0).astype(int)
+        has = g["n_obs"] > 0                                    # "not reported" defaults only apply to real reports
+        f["last_obs_utc"] = g["known_at_utc"].where(has).ffill()
         fill = ["temp_c", "dewpt_c", "slp_hpa", "wind_kt", "peak_wind_kt", "headwind_kt", "crosswind_kt", "xwind_max_kt",
                 "tailwind_max_kt", "vis_mi", "vis_min_mi", "aar_ratio"]
         g = g.copy()
@@ -42,8 +51,8 @@ def hourly_features(hourly):
         f["dewpt_spread_c"] = g["temp_c"] - g["dewpt_c"]
         f["slp_hpa"] = g["slp_hpa"]
         f["wind_kt"] = g["wind_kt"]
-        f["gust_kt"] = g["gust_kt"].fillna(0.0)                 # null = no gust reported
-        f["has_gust"] = g["gust_kt"].notna().astype(int)
+        f["gust_kt"] = g["gust_kt"].fillna(0.0).where(has)      # null in a report = no gust
+        f["has_gust"] = g["gust_kt"].notna().astype(float).where(has)
         f["peak_wind_kt"] = g["peak_wind_kt"]
         f["headwind_kt"] = g["headwind_kt"]                      # >0 headwind, <0 tailwind
         f["crosswind_abs_kt"] = g["crosswind_kt"].abs()
@@ -51,13 +60,13 @@ def hourly_features(hourly):
         f["tailwind_max_kt"] = g["tailwind_max_kt"]
         f["vis_mi"] = g["vis_mi"]
         f["vis_min_mi"] = g["vis_min_mi"]
-        f["has_ceiling"] = g["ceiling_ft"].notna().astype(int)   # null = no cloud ceiling
-        f["ceiling_ft"] = g["ceiling_ft"].fillna(NO_CEILING_FT)
-        f["ceiling_min_ft"] = g["ceiling_min_ft"].fillna(NO_CEILING_FT)
-        f["precip_mm"] = g["precip_mm"].fillna(0.0)
-        f["thunder"] = g["thunder"].astype(float)
-        f["winter"] = g["winter"].astype(float)
-        f["wxcode_present"] = g["wxcodes"].notna().astype(int)
+        f["has_ceiling"] = g["ceiling_ft"].notna().astype(float).where(has)   # null in a report = no cloud ceiling
+        f["ceiling_ft"] = g["ceiling_ft"].fillna(NO_CEILING_FT).where(has)
+        f["ceiling_min_ft"] = g["ceiling_min_ft"].fillna(NO_CEILING_FT).where(has)
+        f["precip_mm"] = g["precip_mm"].fillna(0.0).where(has)
+        f["thunder"] = g["thunder"].astype(float).where(has)
+        f["winter"] = g["winter"].astype(float).where(has)
+        f["wxcode_present"] = g["wxcodes"].notna().astype(float).where(has)
         f["flight_cat"] = g["flight_category"].map(FCAT)
         f["aar_ratio_now"] = g["aar_ratio"]
         # 3-hour trends
@@ -79,13 +88,18 @@ def hourly_features(hourly):
 
 
 def attach_state(df, hw, issue_col="issue_utc"):
-    """Attach, per row, the newest hourly weather state published at or before the issue time."""
+    """Attach, per row, the newest hourly weather state published at or before the issue time.  If the last real
+    observation is older than MAX_WX_AGE the row is kept but its weather is unknown (wx_stale = 1)."""
     df = df.sort_values(issue_col)
     m = pd.merge_asof(df, hw, left_on=issue_col, right_on="known_at_utc", by="airport", direction="backward")
     m = m.dropna(subset=["known_at_utc"])        # issue time earlier than the first observation
     assert (m["known_at_utc"] <= m[issue_col]).all(), "leakage: observation published after the issue time"
     m["wx_age_h"] = (m[issue_col] - m["obs_hour_utc"]).dt.total_seconds() / 3600
-    return m.drop(columns=["known_at_utc"])
+    stale = ~((m[issue_col] - m["last_obs_utc"]) <= MAX_WX_AGE)
+    wx = [c for c in hw.columns if c not in ("airport", "known_at_utc", "obs_hour_utc", "last_obs_utc", "wx_obs_missing")]
+    m.loc[stale, wx] = np.nan
+    m["wx_stale"] = stale.astype(int)
+    return m.drop(columns=["known_at_utc", "last_obs_utc"])
 
 
 def calendar_features(local_ts, prefix=""):
@@ -132,7 +146,7 @@ def build_aar_table(hourly, taf_table, leads=AAR_LEADS):
 # Task 2: delay table
 # --------------------------------------------------------------------------------------------------
 def _to_utc(local, tz):
-    return local.dt.tz_localize(tz, ambiguous="NaT", nonexistent="shift_forward").dt.tz_convert("UTC")
+    return local.dt.tz_localize(tz, ambiguous="NaT", nonexistent="NaT").dt.tz_convert("UTC")
 
 
 def flight_events(fl):
@@ -151,7 +165,9 @@ def flight_events(fl):
         d["event_utc"] = pd.concat([_to_utc(g[time_col], C.AIRPORTS[a]["tz"]) for a, g in d.groupby("airport")])
         d["sched_local"] = d[time_col]
         ev.append(d)
-    ev = pd.concat(ev, ignore_index=True).dropna(subset=["event_utc"])
+    ev = pd.concat(ev, ignore_index=True)
+    print(f"dropped {int(ev['event_utc'].isna().sum())} events with an ambiguous/nonexistent local (DST) time")
+    ev = ev.dropna(subset=["event_utc"])
     ev["cancelled"] = ev["CANCELLED"].fillna(0).astype(int)
     ev["diverted"] = ev["DIVERTED"].fillna(0).astype(int)
     return ev
@@ -188,6 +204,24 @@ def recent_disruption(events, rows, windows=(6, 24)):
     return pd.DataFrame(res, index=rows.index)
 
 
+def load_traffic():
+    """BTS flights touching the hubs, from the validated cache (stage1_pipeline.download_sources must have run)."""
+    records = stage1_pipeline.download_sources(C.EXTERNAL, pd.Timestamp(C.SOURCE_START), pd.Timestamp(C.SOURCE_END),
+                                               offline=True)
+    return stage1_pipeline.load_bts(records, stage1_pipeline.airport_zones(C.EXTERNAL / "airports.dat"), C.EXTERNAL)
+
+
+def attach_traffic(rows, bts):
+    """Airport-wide BTS context: scheduled movements in the event hour, operations completed in the 3 h before the
+    issue time and their severe-departure-delay rate (BTS = reporting carriers, a demand proxy, not AAR)."""
+    ev = pd.DataFrame({"airport": rows["airport"].map(lambda icao: C.AIRPORTS[icao]["iata"]),
+                       "event_utc": rows["event_utc"], "prediction_utc": rows["issue_utc"]}, index=rows.index)
+    out, _ = stage1_pipeline.attach_bts(ev, bts)
+    feats = out.drop(columns=[*ev.columns, "bts_observed_through_utc"])
+    feats["bts_missing"] = feats["bts_missing"].astype(int)
+    return feats
+
+
 def build_delay_table(hourly, taf_table, flights, leads=AAR_LEADS):
     ev_all = flight_events(flights)
     ev = ev_all
@@ -205,6 +239,7 @@ def build_delay_table(hourly, taf_table, flights, leads=AAR_LEADS):
                *cal.columns]].rename(columns={"OP_UNIQUE_CARRIER": "carrier", "DISTANCE": "distance_mi",
                                               "CRS_ELAPSED_TIME": "sched_elapsed_min"})
     hw = hourly_features(hourly)
+    bts = load_traffic()
     parts = []
     for lead in leads:
         b = base.copy()
@@ -213,14 +248,25 @@ def build_delay_table(hourly, taf_table, flights, leads=AAR_LEADS):
         b = attach_state(b, hw)
         # recent hub performance, summarising only flights already completed at the issue time
         rec = recent_disruption(events=ev_all, rows=b)
-        parts.append(pd.concat([b, rec], axis=1))
+        parts.append(pd.concat([b, rec, attach_traffic(b, bts)], axis=1))
     t = pd.concat(parts, ignore_index=True)
     tt = taf_table.rename(columns={"hour_utc": "event_hour_utc"})
     t = t.merge(tt, on=["airport", "event_hour_utc", "lead_h"], how="left")
     t["split"] = split_of(t["event_utc"])
+    t = drop_purged(t)
     t = t.sort_values(["event_utc", "flight_id", "direction", "lead_h"]).reset_index(drop=True)
     print(f"events {n_events:,} -> labelled {t['flight_id'].nunique():,} flights, {len(t):,} rows")
     return t
+
+
+def drop_purged(t):
+    """Drop rows in the purge window and every row of a flight whose departure and arrival land in different splits.
+    train_delay trains on split != 'test', so purged rows must not stay in the table."""
+    spans = t.groupby("flight_id")["split"].transform("nunique") > 1
+    purged = spans | (t["split"] == "purged")
+    print(f"purged {int(purged.sum()):,} rows at the test boundary")
+    # ponytail: the 2024 out-of-fold quarters in train_delay have no purge gaps; add them if OOF scores look optimistic
+    return t[~purged]
 
 
 def load_flights():

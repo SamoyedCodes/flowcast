@@ -4,7 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 RAW_WX = DATA / "weather" / "raw"
-RAW_TAF = DATA / "weather" / "raw_taf"
+# TAF + TAF metadata, BTS archives and airport time zones, downloaded and verified by stage1_pipeline.py
+EXTERNAL = DATA / "external"
 PROC = DATA / "processed"
 MODELS = ROOT / "models"
 REPORTS = ROOT / "reports"
@@ -12,6 +13,8 @@ FLIGHTS_CSV = DATA / "clean" / "flights_clean.csv"
 
 # Study window (END exclusive). Flights in the organiser file run to 2025-07-31.
 START, END = "2023-01-01", "2025-08-01"
+# source window: padded for TAF issuance, previous operations and UTC date rollovers (same as stage1_pipeline.run)
+SOURCE_START, SOURCE_END = "2022-12-30", "2025-08-02"
 
 # icao -> airport metadata. runway_heading_deg: single assumed take-off/landing heading from the brief.
 # For an airport not listed here the pipeline falls back to the prevailing wind direction
