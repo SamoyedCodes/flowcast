@@ -4,6 +4,7 @@ before 2025 would have said at the chosen issue time.   Run:  python dashboard/s
 """
 import json
 import math
+import os
 import sys
 from functools import lru_cache
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -13,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 import joblib
 import numpy as np
 import pandas as pd
+import requests
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -20,7 +22,7 @@ from src import advisory, config as C  # noqa: E402
 from src import train_delay as TD  # noqa: E402
 
 WEB = Path(__file__).resolve().parent / "web"
-PORT = 8502
+PORT = int(os.environ.get("PORT", 8502))
 NAMES = {
     "carrier": "airline", "other_airport": "route", "airport": "hub", "direction": "arrival/departure",
     "hour_local": "time of day", "hour_sin": "time of day", "hour_cos": "time of day", "doy_sin": "season", "doy_cos": "season",
@@ -110,7 +112,8 @@ def meta():
     events.sort(key=lambda e: e["ratio"])
     return {"airports": airports, "events": events, "start": ts(TEST0), "end": ts(TEST1),
             "flights": int(DL.loc[DL["lead_h"] == 3, "flight_id"].nunique()), "hours": int(AAR["issue_utc"].nunique()),
-            "base_rate": num(DL["severe_delay"].mean(), 4), "default": {"icao": "KATL", "t0": "2025-03-15T06:00Z"}}
+            "base_rate": num(DL["severe_delay"].mean(), 4), "default": {"icao": "KATL", "t0": "2025-03-15T06:00Z"},
+            "explain": api_key() is not None}
 
 
 def weather_row(r):
@@ -229,6 +232,69 @@ def evaluation(icao, lead):
     return out
 
 
+def storm(icao, lead):
+    """Storm-hour evidence from the full-BTS pipeline (reports/jho_*.csv, built by jho/aerocast_data/run_all.py).
+    A storm hour has a NOAA Storm Event within 50 km; NOAA logs are compiled after the event, so they only label
+    test hours and are never a model input. Target is actual BTS arrivals per hour, not the weather-derived AAR."""
+    sa, sd, fb = REP.get("jho_storm_hours_arrivals"), REP.get("jho_storm_hours_severe_delay"), REP.get("jho_fullbts_severe_metrics")
+    if sa is None or sd is None:
+        raise KeyError("storm-hour reports missing: copy jho/aerocast_data reports into reports/jho_*.csv")
+    iata = C.AIRPORTS[icao]["iata"]
+    a = sa[sa.airport == iata].sort_values("horizon_h")
+    r = a[a.horizon_h == lead].iloc[0]
+    out = {"icao": icao, "iata": iata, "lead": lead, "hours": int(r.storm_hours),
+           "arr": {"model": num(r.rmse_model), "clim": num(r.rmse_climatology), "sched": num(r.rmse_schedule),
+                   "persist": num(r.rmse_persistence), "all_hours": num(r.rmse_model_all_hours),
+                   "cover": num(r.interval_coverage, 3), "cover_all": num(r.coverage_all_hours, 3)},
+           "by_lead": [{"lead": int(x.horizon_h), "storm": num(x.rmse_model), "all": num(x.rmse_model_all_hours),
+                        "clim": num(x.rmse_climatology)} for x in a.itertuples()],
+           "delay": [{"dir": x.direction, "lead": int(x.horizon_h), "flights": int(x.flights), "hours": int(x.storm_hours),
+                      "rate": num(x.severe_rate, 3), "mean_p": num(x.mean_predicted_p, 3), "model": num(x.pr_auc_model, 3),
+                      "clim": num(x.pr_auc_climatology, 3), "lo": num(x.diff_ci95_low, 3), "hi": num(x.diff_ci95_high, 3),
+                      "verdict": x.verdict} for x in sd[sd.airport == iata].sort_values(["direction", "horizon_h"]).itertuples()]}
+    if fb is not None:
+        f = fb[(fb.airport == iata) & (fb.horizon_h == lead) & (fb.subset == "all_hours")]
+        out["fullbts"] = [{"dir": x.direction, "n": int(x.n), "rate": num(x.base_rate, 3), "model": num(x.pr_auc_model, 3),
+                           "clim": num(x.pr_auc_climatology, 3), "precision": num(x.precision, 3), "recall": num(x.recall, 3)}
+                          for x in f.itertuples()]
+    return out
+
+
+def api_key():
+    """ANTHROPIC_API_KEY from the environment, else from a git-ignored .env (repo root or jho/aerocast_data)."""
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    for env in (ROOT / ".env", ROOT / "jho" / "aerocast_data" / ".env"):
+        if not key and env.exists():
+            for line in env.read_text().splitlines():
+                if line.strip().startswith("ANTHROPIC_API_KEY="):
+                    key = line.split("=", 1)[1].strip().strip('"')
+    return key or None
+
+
+def explain(icao, t0, sens, thr):
+    """Plain-English rephrasing of the outlook already on screen. Claude never forecasts; the models do."""
+    if not api_key():
+        raise KeyError("no ANTHROPIC_API_KEY configured")
+    o = outlook(icao, t0, sens, thr)
+    if o is None:
+        raise KeyError(f"no forecast issued at {ts(t0)}")
+    low = min(o["hours"], key=lambda h: h["pred"] if h["pred"] is not None else 1e9)
+    ctx = {"airport": o["iata"], "issued_utc": o["t0"], "verdict": o["verdict"], "best_case_aar_per_h": o["aar_vfr"],
+           "lowest_hour": {k: low[k] for k in ("hour", "lead", "pred", "lo", "hi")},
+           "weather_now": {k: (o["now"] or {}).get(k) for k in ("category", "wind_kt", "gust_kt", "crosswind_kt", "ceiling_ft", "vis_mi", "wx")},
+           "windows": [{k: w[k] for k in ("start", "end", "severity", "min_aar", "hazards", "advice")} for w in o["windows"]],
+           "flights_at_risk": o["n_high"], "flights_in_window": o["n_flights"], "risk_threshold": thr}
+    body = {"model": "claude-haiku-5-5", "max_tokens": 600,
+            "system": "You explain an airport capacity and delay-risk outlook to an operations duty manager. Use ONLY the "
+                      "numbers given, do not invent or change any. Do not give orders; the human decides. Plain English, "
+                      "at most 4 sentences, no em dashes.",
+            "messages": [{"role": "user", "content": json.dumps(ctx, default=str)}]}
+    r = requests.post("https://api.anthropic.com/v1/messages", json=body, timeout=30,
+                      headers={"x-api-key": api_key(), "anthropic-version": "2023-06-01", "content-type": "application/json"})
+    r.raise_for_status()
+    return {"text": "".join(b.get("text", "") for b in r.json()["content"] if b.get("type") == "text").strip()}
+
+
 # ------------------------------------------------------------------ server
 def parse_t0(s):
     t = pd.Timestamp((s or "").rstrip("Z"))
@@ -270,8 +336,15 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json(200, history(icao, parse_t0(q.get("t0"))))
             if u.path == "/api/eval":
                 return self.send_json(200, evaluation(icao, int(q.get("lead", 3))))
-        except (ValueError, KeyError) as e:
+            if u.path == "/api/storm":
+                return self.send_json(200, storm(icao, int(q.get("lead", 3))))
+            if u.path == "/api/explain":
+                return self.send_json(200, explain(icao, parse_t0(q.get("t0")), "cautious" if q.get("sens") == "cautious" else "balanced",
+                                                   float(q.get("thr", 0.25))))
+        except (ValueError, KeyError, IndexError) as e:
             return self.send_json(400, {"error": str(e)})
+        except requests.RequestException as e:
+            return self.send_json(502, {"error": f"Claude summary unavailable ({type(e).__name__}); the forecast does not depend on it."})
         self.send_json(404, {"error": "no such endpoint"})
 
 
