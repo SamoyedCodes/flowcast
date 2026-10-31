@@ -4,6 +4,8 @@ Replay mode: pick any "issue time" in the held-out 2025 test period.  The foreca
 models would have produced at that time (trained only on data before 2025); switch on "reveal outcome" to
 compare with what happened.   Run:  streamlit run dashboard/app.py
 """
+import json
+import os
 import sys
 from html import escape
 from pathlib import Path
@@ -13,6 +15,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
+import requests
 import streamlit as st
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -156,6 +159,30 @@ NAMES = {
 }
 
 
+def api_key():
+    """ANTHROPIC_API_KEY from the environment, else from a git-ignored .env (repo root or jho/aerocast_data)."""
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    for env in (ROOT / ".env", ROOT / "jho" / "aerocast_data" / ".env"):
+        if not key and env.exists():
+            for line in env.read_text().splitlines():
+                if line.strip().startswith("ANTHROPIC_API_KEY="):
+                    key = line.split("=", 1)[1].strip().strip('"')
+    return key or None
+
+
+def claude_explain(context):
+    """Plain-English rephrasing of numbers already on screen. The LLM never forecasts; the models do."""
+    body = {"model": "claude-haiku-5-5", "max_tokens": 600,
+            "system": "You explain an airport capacity and delay-risk outlook to an operations duty manager. Use ONLY the "
+                      "numbers given, do not invent or change any. Do not give orders; the human decides. Plain English, "
+                      "at most 4 sentences, no em dashes.",
+            "messages": [{"role": "user", "content": json.dumps(context, default=str)}]}
+    r = requests.post("https://api.anthropic.com/v1/messages", json=body, timeout=30,
+                      headers={"x-api-key": api_key(), "anthropic-version": "2023-06-01", "content-type": "application/json"})
+    r.raise_for_status()
+    return "".join(b.get("text", "") for b in r.json()["content"] if b.get("type") == "text").strip()
+
+
 def nice(f):
     if f in NAMES:
         return NAMES[f]
@@ -264,7 +291,7 @@ html('<div class="tiles">' + "".join([
     tile(f"{n_high}", f"{n_high / max(len(fl), 1):.0%}", f"Flights at risk ≥ {int(thr * 100)}%", "warn" if n_high else ""),
 ]) + "</div>")
 
-tab_f, tab_d, tab_h, tab_r, tab_e = st.tabs(["Capacity", "Delay risk", "History", "Recommendations", "Evaluation"])
+tab_f, tab_d, tab_h, tab_r, tab_e, tab_s = st.tabs(["Capacity", "Delay risk", "History", "Recommendations", "Evaluation", "Storm hours"])
 
 # ------------------------------------------------------------------ tab: capacity forecast
 with tab_f:
@@ -359,6 +386,18 @@ with tab_r:
     for w in wins:
         html(alert(w["severity"], f"{w['severity'].upper()} window {w['start']:%H:%MZ}–{w['end']:%H:%MZ}", items=advisory.advice(w, n_high)))
     html('<p class="caption">Recommendations are rule-based and transparent (src/advisory.py); the machine learning supplies only the forecasts. A qualified person decides.</p>')
+    if api_key() and st.button("Explain this outlook in plain English (Claude)"):
+        ctx = {"airport": cfg["iata"], "issued_utc": f"{t0:%Y-%m-%d %H:%MZ}", "last_weather_category": cat,
+               "lowest_forecast_aar_per_h": round(float(min_row["pred_aar"])), "at_hour_utc": f"{min_row['hour_utc']:%H:%MZ}",
+               "aar_80pct_range": [round(float(min_row["lo_aar"])), round(float(min_row["hi_aar"]))],
+               "best_case_aar_per_h": cfg["aar"]["VFR"], "flights_in_window": len(fl), "flights_at_risk": n_high,
+               "risk_threshold": thr, "windows": [{"severity": w["severity"], "start": f"{w['start']:%H:%MZ}",
+                                                    "end": f"{w['end']:%H:%MZ}", "advice": advisory.advice(w, n_high)} for w in wins]}
+        try:
+            with st.spinner("Asking Claude…"):
+                html(alert("clear", "Plain-English summary (Claude, explanation only)", escape(claude_explain(ctx))))
+        except Exception as e:  # noqa: BLE001
+            st.warning(f"Claude summary unavailable ({type(e).__name__}). The forecasts and rules above do not depend on it.")
 
 # ------------------------------------------------------------------ tab: evidence
 with tab_e:
@@ -429,3 +468,69 @@ with tab_e:
         "In the very worst capacity drops the AAR model is no more accurate than the TAF-implied rate.",
         "AAR labels are a weather-derived proxy of FAA called rates, not logged facility data.",
         "The flight file is a ~3% sample of traffic; BTS covers reporting carriers only."]))
+
+# ------------------------------------------------------------------ tab: storm hours (full-BTS pipeline, jho/aerocast_data)
+with tab_s:
+    sa, sd, fb = rep.get("jho_storm_hours_arrivals"), rep.get("jho_storm_hours_severe_delay"), rep.get("jho_fullbts_severe_metrics")
+    if sa is None or sd is None:
+        html(alert("moderate", "Storm-hour reports not found", "Run jho/aerocast_data/run_all.py and copy its reports into reports/jho_*.csv."))
+    else:
+        html(alert("clear", "How well do the forecasts hold up in the hours the challenge is about?",
+                   "Storm hour = a NOAA Storm Event (thunderstorm wind, hail, tornado, flash flood) within 50 km overlaps the target hour. "
+                   "NOAA logs are compiled after the event, so they only label 2025 test hours; they are never a model input. "
+                   "Target here is actual BTS arrivals per hour from the full archive (3.26 M flights), not the weather-derived AAR."))
+        lead_s = st.segmented_control("Lead time", [3, 6, 9, 12], default=3, format_func=lambda h: f"+{h} h", key="storm_lead") or 3
+        a_row = sa[(sa.airport == cfg["iata"]) & (sa.horizon_h == lead_s)].iloc[0]
+        rows = [("Our model", a_row.rmse_model, f"{a_row.rmse_model:.1f}", "ok"), ("Climatology", a_row.rmse_climatology, f"{a_row.rmse_climatology:.1f}", ""),
+                ("Schedule", a_row.rmse_schedule, f"{a_row.rmse_schedule:.1f}", ""), ("Persistence", a_row.rmse_persistence, f"{a_row.rmse_persistence:.1f}", "")]
+        cards = [compare(f"Arrivals per hour in storm hours (RMSE, {int(a_row.storm_hours)} hours)", f"{a_row.rmse_model:.1f}", "/h", rows,
+                         f"Normal hours: {a_row.rmse_model_all_hours:.1f}/h. Errors are about {a_row.rmse_model / a_row.rmse_model_all_hours:.1f}x larger in storms. Shorter is better."),
+                 compare("90% forecast range in storm hours: share of outcomes inside", f"{a_row.interval_coverage:.0%}", "of hours",
+                         [("Storm hours", a_row.interval_coverage, f"{a_row.interval_coverage:.0%}", "stop"),
+                          ("All hours", a_row.coverage_all_hours, f"{a_row.coverage_all_hours:.0%}", "ok"), ("Promised", 0.9, "90%", "")],
+                         "Failure case: in storms the range is far too narrow. Read storm-hour forecasts as a warning, not an exact count.")]
+        for direction in ("arrival", "departure"):
+            r = sd[(sd.airport == cfg["iata"]) & (sd.direction == direction) & (sd.horizon_h == lead_s)]
+            if len(r):
+                r = r.iloc[0]
+                tone = "ok" if r.verdict == "model better" else "amber" if r.verdict == "no clear difference" else "stop"
+                cards.append(compare(f"Severe-delay ranking in storm hours, {direction}s (PR-AUC)", f"{r.pr_auc_model:.2f}", f"vs {r.pr_auc_climatology:.2f} climatology",
+                                     [("Our model", r.pr_auc_model, f"{r.pr_auc_model:.3f}", tone), ("Climatology", r.pr_auc_climatology, f"{r.pr_auc_climatology:.3f}", ""),
+                                      ("Severe share", r.severe_rate, f"{r.severe_rate:.0%}", ""), ("Mean predicted", r.mean_predicted_p, f"{r.mean_predicted_p:.0%}", "amber")],
+                                     f"{int(r.flights)} flights in {int(r.storm_hours)} storm hours. 95% bootstrap interval for the gain "
+                                     f"{r.diff_ci95_low:+.3f} to {r.diff_ci95_high:+.3f}: {r.verdict}. The model under-states storm risk."))
+        html('<div class="grid2">' + "".join(cards) + "</div>")
+
+        c1, c2 = st.columns(2)
+        sap = sa[sa.airport == cfg["iata"]].sort_values("horizon_h")
+        f6 = go.Figure()
+        f6.add_trace(go.Bar(x=[f"+{h} h" for h in sap.horizon_h], y=sap.rmse_model_all_hours, name="All hours", marker=dict(color=ACCENT, cornerradius=5)))
+        f6.add_trace(go.Bar(x=[f"+{h} h" for h in sap.horizon_h], y=sap.rmse_model, name="Storm hours", marker=dict(color=STOP, cornerradius=5)))
+        f6.add_trace(go.Scatter(x=[f"+{h} h" for h in sap.horizon_h], y=sap.rmse_climatology, name="Climatology, storm hours", mode="lines+markers", line=dict(color=MUTED, dash="dot")))
+        f6.update_layout(title=f"{cfg['iata']} arrivals forecast error by lead time", yaxis_title="RMSE, arrivals / hour", barmode="group",
+                         height=340, legend=dict(orientation="h", y=-0.2))
+        chart(f6, c1)
+        sdp = sd[sd.airport == cfg["iata"]].copy()
+        sdp["label"] = sdp.direction.str[:3] + " +" + sdp.horizon_h.astype(str) + " h"
+        f7 = go.Figure()
+        f7.add_trace(go.Scatter(x=sdp.label, y=sdp.pr_auc_model - sdp.pr_auc_climatology, mode="markers", name="gain over climatology",
+                                marker=dict(color=ACCENT, size=10),
+                                error_y=dict(type="data", symmetric=False, array=sdp.diff_ci95_high - (sdp.pr_auc_model - sdp.pr_auc_climatology),
+                                             arrayminus=(sdp.pr_auc_model - sdp.pr_auc_climatology) - sdp.diff_ci95_low, color=TEXT2)))
+        f7.add_hline(y=0, line_color=MUTED, line_dash="dot")
+        f7.update_layout(title="Storm-hour severe-delay gain over climatology, with 95% interval", yaxis_title="PR-AUC gain", height=340, showlegend=False)
+        chart(f7, c2)
+
+        if fb is not None:
+            fbs = fb[(fb.airport == cfg["iata"]) & (fb.horizon_h == lead_s) & (fb.get("subset", "all_hours") == "all_hours")]
+            if len(fbs):
+                html('<div class="section">Same classifier on the full BTS archive, all 2025 hours</div>')
+                show = fbs[["direction", "n", "base_rate", "pr_auc_model", "pr_auc_climatology", "brier_model", "brier_climatology", "precision", "recall"]].copy()
+                show.columns = ["Type", "Test flights", "Severe share", "PR-AUC model", "PR-AUC climatology", "Brier model", "Brier climatology", "Precision", "Recall"]
+                st.dataframe(show.round(3), hide_index=True, width="stretch")
+                html('<p class="caption">LightGBM trained on 2023-01 to 2024-06 BTS flights, threshold chosen on 2024 H2, scored once on 2025. '
+                     'About 45,000 test flights per airport, direction and lead, so the intervals are tight.</p>')
+        html(alert("moderate", "Known limits in storm hours", items=[
+            f"Few storm hours: {int(sap.storm_hours.iloc[0])} at {cfg['iata']} in the 2025 test period, so storm results are less certain than the overall ones.",
+            "In storms the model's probabilities run well below the observed severe-delay share; treat any rise in risk as significant.",
+            "A TAF thunderstorm-timing feature (within 2 h of the target hour) was tested and rejected on 2024 validation data."]))

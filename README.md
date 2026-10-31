@@ -51,6 +51,27 @@ downloads by itself (2023-01 to 2025-07, no manual steps):
 
 `weather_download.ipynb` and `data_cleaning.ipynb` are the earlier exploratory notebooks; the scripts above supersede them.
 
+## Extra evidence from the full-BTS pipeline (`jho/aerocast_data`)
+
+A second pipeline in `jho/aerocast_data` (run with `python run_all.py --start 2023-01 --end 2025-07`) rebuilds the
+flights from the full BTS archive (3,255,141 ATL/DFW flights, not the 0.5% organiser sample) and adds three things
+the main pipeline does not have. Its outputs are copied into `reports/` as `jho_*.csv` so the dashboard and deck can
+use them directly.
+
+| File | What it shows |
+|---|---|
+| `jho_storm_hours_arrivals.csv` | Arrivals per hour in **storm hours only** (a NOAA Storm Event within 50 km overlaps the target hour). RMSE rises from about 7 to 8 in normal hours to about 17 to 20, and the 90% interval covers only about half. Still better than climatology and schedule at both airports and every lead. |
+| `jho_storm_hours_severe_delay.csv` | Severe-delay PR-AUC in storm hours, model vs climatology, with a 95% bootstrap interval over storm hours. Clearly better for DFW arrivals at all leads, ATL departures at 3 and 6 h and DFW departures at 3 h; no clear difference elsewhere (ATL arrivals rest on only 32 storm hours). Never clearly worse. |
+| `jho_actual_arrivals_metrics.csv` | Forecast of **actual** BTS arrivals per hour (3/6/9/12 h), against persistence, climatology and schedule, for all hours, busy hours and storm hours. A check on the rule-based AAR target using observed data. |
+| `jho_actual_arrivals_unseen_airport.csv` | Same target, trained on one airport and tested on the other, normalised by each airport's own 95th percentile. |
+| `jho_fullbts_severe_metrics.csv`, `jho_fullbts_severe_calibration.csv` | Severe-delay classifier (LightGBM) trained and tested on full BTS: about 45,000 test flights per airport, direction and lead, against 5,697 in total for the organiser-sample model. |
+
+How to read them next to the main results:
+
+* **NOAA Storm Events are labels only.** They are compiled after the event, so they mark which test hours were storm hours and are never a model input.
+* **The RMSE values are not comparable** with `aar_metrics.csv`: that file scores the rule-based AAR, these score real arrivals. They answer different questions and support each other.
+* A thunderstorm-timing feature (TAF thunder within 2 h of the target hour) was tried and rejected on validation; the before-and-after reports are in `jho/aerocast_data/data/reports_before_tafwin/`.
+
 ## Design decisions in one place
 
 * **Leakage:** every weather feature comes from the latest METAR hour already *published* at `issue time = event - lead`; TAFs must have been issued at least `lead` hours before the target hour; "recent hub performance" and BTS traffic only count flights already completed at the issue time. Enforced by assertions and `tests/`.

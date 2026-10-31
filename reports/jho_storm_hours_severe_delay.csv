@@ -1,0 +1,17 @@
+airport,direction,horizon_h,storm_hours,flights,severe_rate,mean_predicted_p,pr_auc_model,pr_auc_climatology,diff_ci95_low,diff_ci95_high,verdict
+ATL,arrival,3,32,385,0.4753,0.1871,0.5832,0.5566,-0.1001,0.1238,no clear difference
+ATL,arrival,6,32,385,0.4753,0.1743,0.5468,0.5566,-0.1337,0.0907,no clear difference
+ATL,arrival,9,32,385,0.4753,0.1566,0.5128,0.5566,-0.167,0.0641,no clear difference
+ATL,arrival,12,32,385,0.4753,0.1504,0.518,0.5566,-0.1773,0.0878,no clear difference
+ATL,departure,3,31,368,0.394,0.1844,0.5282,0.3903,0.0462,0.2207,model better
+ATL,departure,6,31,368,0.394,0.17,0.543,0.3903,0.0435,0.254,model better
+ATL,departure,9,31,368,0.394,0.1504,0.5026,0.3903,-0.0134,0.2385,no clear difference
+ATL,departure,12,31,368,0.394,0.145,0.4956,0.3903,-0.0159,0.2299,no clear difference
+DFW,arrival,3,76,813,0.5855,0.3577,0.8344,0.5885,0.1526,0.3411,model better
+DFW,arrival,6,76,813,0.5855,0.3387,0.7856,0.5885,0.1005,0.2827,model better
+DFW,arrival,9,76,813,0.5855,0.2928,0.7571,0.5885,0.0756,0.2657,model better
+DFW,arrival,12,76,813,0.5855,0.2798,0.7507,0.5885,0.0747,0.2482,model better
+DFW,departure,3,70,799,0.5795,0.3625,0.7438,0.5833,0.0396,0.2625,model better
+DFW,departure,6,70,799,0.5795,0.3348,0.6852,0.5833,-0.0106,0.2074,no clear difference
+DFW,departure,9,70,799,0.5795,0.308,0.6836,0.5833,-0.0086,0.2301,no clear difference
+DFW,departure,12,70,799,0.5795,0.2915,0.6783,0.5833,-0.0159,0.2033,no clear difference

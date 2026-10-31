@@ -28,10 +28,10 @@ MODELS, REPORTS = DATA / "models", DATA / "reports"
 COVERAGE = 0.90
 # targets, scoring masks and timestamps: never inputs
 AAR_NOT_FEATURES = {"target_hour_utc", "t0_utc", "taf_issued_utc", "actual_arrivals", "throughput_ratio",
-                    "arrivals_norm", "severe_arr_share", "high_demand_hour", "split"}
+                    "arrivals_norm", "severe_arr_share", "high_demand_hour", "split", "storm_hour"}
 FL_NOT_FEATURES = {"FL_DATE", "TAIL_NUM", "OP_CARRIER_FL_NUM", "ORIGIN", "DEST", "CRS_DEP_TIME", "CRS_ARR_TIME",
                    "sched_dep_utc", "sched_arr_utc", "prev_sched_arr_utc", "event_utc", "t0_utc", "t0_hour",
-                   "target_hour_utc", "taf_issued_utc", "y_severe", "split"}
+                   "target_hour_utc", "taf_issued_utc", "y_severe", "split", "storm_hour"}
 CATEGORICAL = ["airport", "direction", "OP_UNIQUE_CARRIER", "obs_flight_cat", "taf_flight_cat"]
 
 
@@ -54,6 +54,27 @@ def align_categories(X, ref):
 
 def rmse(y, p):
     return float(np.sqrt(np.mean((np.asarray(y) - np.asarray(p)) ** 2)))
+
+
+def add_storm_flag(df, time_col):
+    """storm_hour = 1 if a NOAA Storm Event within 50 km of the airport overlaps that UTC hour.
+    Evaluation label only: Storm Events are compiled after the event, so this is added after
+    training and is never a model input. State-wide zone events are too coarse and are left out."""
+    df = df.copy()
+    p = PROC / "storm_events.parquet"
+    if not p.exists():
+        df["storm_hour"] = 0
+        return df
+    s = pd.read_parquet(p)
+    s = s[(s.match == "within_radius") & (s.flag_tz_unparsed == 0)].dropna(subset=["begin_utc", "end_utc"])
+    hrs = pd.DataFrame([(ap, h) for ap, b, e in zip(s.airport, s.begin_utc, s.end_utc)
+                        for h in pd.date_range(b.floor("h"), e.floor("h"), freq="h")], columns=["airport", "hour"])
+    hrs = hrs.drop_duplicates().assign(storm_hour=1)
+    hrs["hour"] = hrs.hour.astype("datetime64[ns]")
+    key = df[time_col].dt.floor("h").astype("datetime64[ns]").rename("hour")
+    df["storm_hour"] = (pd.concat([df.airport, key], axis=1).merge(hrs, on=["airport", "hour"], how="left")
+                        .storm_hour.fillna(0).astype(int).values)
+    return df
 
 
 # ---------------------------------------------------------------- AAR proxy
@@ -90,12 +111,14 @@ def train_aar(a):
     a = a.join(q, on=["airport", "horizon_h"])
     a["pred_lo"] = (a.pred - a.conformal_halfwidth).clip(lower=0)
     a["pred_hi"] = a.pred + a.conformal_halfwidth
+    a = add_storm_flag(a, "target_hour_utc")
 
     rows = []
     t = a[a.split == "test"]
     p95 = a[a.split == "train"].groupby("airport").actual_arrivals.quantile(0.95)
     for (ap, H), g in t.groupby(["airport", "horizon_h"]):
-        for subset, gg in (("all_hours", g), ("high_demand", g[g.high_demand_hour == 1])):
+        for subset, gg in (("all_hours", g), ("high_demand", g[g.high_demand_hour == 1]),
+                           ("storm_hours", g[g.storm_hour == 1])):
             if len(gg) == 0:
                 continue
             row = {"airport": ap, "horizon_h": H, "subset": subset, "n": len(gg),
@@ -113,7 +136,7 @@ def train_aar(a):
     imp = pd.Series(m.feature_importance("gain"), index=m.feature_name()).sort_values(ascending=False)
     imp.to_csv(REPORTS / "aar_feature_importance.csv", header=["gain"])
     a[["airport", "target_hour_utc", "t0_utc", "horizon_h", "split", "sched_arrivals", "actual_arrivals",
-       "high_demand_hour", "pred", "pred_lo", "pred_hi", "base_persistence", "base_climatology"]
+       "high_demand_hour", "storm_hour", "pred", "pred_lo", "pred_hi", "base_persistence", "base_climatology"]
       + [c for c in a.columns if c.startswith(("obs_", "taf_"))]].to_parquet(PROC / "aar_predictions.parquet", index=False)
     return rep, m.best_iteration
 
@@ -185,15 +208,18 @@ def train_severe(f):
     grid = np.linspace(0.02, 0.9, 89)
     thr = float(grid[np.argmax([f1_score(v.y_severe, v.p_severe >= g, zero_division=0) for g in grid])])
 
+    f = add_storm_flag(f, "event_utc")
     rows = []
     t = f[f.split == "test"]
-    for (ap, d, H), g in t.groupby(["airport", "direction", "horizon_h"]):
+    for (ap, d, H), g0 in t.groupby(["airport", "direction", "horizon_h"]):
+      for subset, g in (("all_hours", g0), ("storm_hours", g0[g0.storm_hour == 1])):
         if g.y_severe.nunique() < 2:
             continue
         yhat = g.p_severe >= thr
         tp, fp = int((yhat & (g.y_severe == 1)).sum()), int((yhat & (g.y_severe == 0)).sum())
         fn, tn = int((~yhat & (g.y_severe == 1)).sum()), int((~yhat & (g.y_severe == 0)).sum())
-        rows.append({"airport": ap, "direction": d, "horizon_h": H, "n": len(g), "base_rate": g.y_severe.mean(),
+        rows.append({"airport": ap, "direction": d, "horizon_h": H, "subset": subset, "n": len(g),
+                     "base_rate": g.y_severe.mean(),
                      "pr_auc_model": average_precision_score(g.y_severe, g.p_severe),
                      "pr_auc_climatology": average_precision_score(g.y_severe, g.base_climatology),
                      "roc_auc_model": roc_auc_score(g.y_severe, g.p_severe),
@@ -234,7 +260,7 @@ if __name__ == "__main__":
         print("\nLeave-one-airport-out (model never saw the held-out airport; normalised RMSE):")
         print(loao.round(3).to_string(index=False))
     print(f"\nSevere delay (>45 min / cxl / div), test 2025, threshold {thr:.2f} chosen on validation:")
-    print(sev_rep[["airport", "direction", "horizon_h", "n", "base_rate", "pr_auc_model", "pr_auc_climatology",
+    print(sev_rep[["airport", "direction", "horizon_h", "subset", "n", "base_rate", "pr_auc_model", "pr_auc_climatology",
                    "brier_model", "brier_climatology", "precision", "recall", "f1"]].round(3).to_string(index=False))
     (REPORTS / "run_info.json").write_text(json.dumps({"aar_best_iter": aar_iter, "severe_threshold": thr,
                                                        "coverage_target": COVERAGE}, indent=2))
