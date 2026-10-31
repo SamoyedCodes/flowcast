@@ -1,5 +1,7 @@
 # Capacity & Risk: airport capacity and severe-delay forecasting (ATL, DFW)
 
+**Live dashboard: [fin2704.vercel.app](https://fin2704.vercel.app/)**
+
 Forecasts, **3 to 12 hours ahead**, for Atlanta (KATL) and Dallas/Fort Worth (KDFW):
 
 1. the hourly **Arrival Acceptance Rate (AAR)**, with an 80% range, scored by RMSE;
@@ -181,7 +183,7 @@ use them directly.
 
 ## Deploying on Vercel
 
-Vercel serves `dashboard/web/` from its CDN and routes `/api/*` to one Python function ([`api/index.py`](api/index.py)).
+The public deployment is at [fin2704.vercel.app](https://fin2704.vercel.app/). Vercel serves `dashboard/web/` from its CDN and routes `/api/*` to one Python function ([`api/index.py`](api/index.py)).
 Only the frontend output is public; replay data and models are function inputs. `.vercelignore` allowlists the
 deployment inputs and excludes raw downloads, local environments, notebooks, Streamlit and training-only files.
 No build step runs the pipeline.
