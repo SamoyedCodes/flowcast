@@ -21,14 +21,16 @@ const I = {
   doc: svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>'),
   cube: svg('<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>'),
   wind: svg('<path d="M3 8h10.5a2.5 2.5 0 1 0-2.5-2.5M3 12h15.5a2.5 2.5 0 1 1-2.5 2.5M3 16h7"/>'),
+  storm: svg('<path d="M7 16.5a4.5 4.5 0 1 1 1.2-8.8A5.5 5.5 0 0 1 18.6 9 3.8 3.8 0 0 1 18 16.5"/><path d="m12.5 12-2.5 4.5h3.5L11 21"/>'),
 };
 const LOGO = `<svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" fill="#00205B"/><rect x="28" y="12" width="8" height="40" rx="1.5" fill="#fff"/><path d="M32 16v5M32 27v5M32 38v5" stroke="#00205B" stroke-width="1.8"/><path d="M32 6a26 26 0 0 1 26 26" fill="none" stroke="#0085CA" stroke-width="6" stroke-linecap="round"/></svg>`;
 
 // ---------- state ----------
-const VIEWS = [["outlook", "Outlook", I.outlook], ["flights", "Flights", I.flights], ["history", "History", I.history], ["eval", "Evaluation", I.eval]];
+const VIEWS = [["outlook", "Outlook", I.outlook], ["flights", "Flights", I.flights], ["history", "History", I.history], ["eval", "Evaluation", I.eval],
+               ["storms", "Storms", I.storm]];
 const SEV = { clear: "Clear", moderate: "Reduced", severe: "Severe" };
 const S = { view: "outlook", meta: null, icao: "KATL", t0: "", sens: "balanced", thr: 0.25, reveal: true, out: null, hist: null, ev: null,
-            lead: 3, busy: false, sel: null, cam: "3d", render: "solid" };
+            st: null, expl: null, lead: 3, busy: false, sel: null, cam: "3d", render: "solid" };
 let stage = null;
 
 const hhmm = s => s ? `${s.slice(11, 16)}Z` : "—";
@@ -52,7 +54,7 @@ async function forecast() {
   S.busy = true; paintAskButton();
   try {
     S.out = await api("outlook", { airport: S.icao, t0: S.t0, sens: S.sens, thr: S.thr });
-    S.t0 = S.out.t0; S.hist = null; S.ev = null; S.sel = null; writeUrl(); syncStage(true);
+    S.t0 = S.out.t0; S.hist = null; S.ev = null; S.st = null; S.expl = null; S.sel = null; writeUrl(); syncStage(true);
   } catch (e) { toast(e.message); }
   S.busy = false; render();
 }
@@ -65,6 +67,7 @@ async function ensure(view) {
   try {
     if (view === "history" && !S.hist) { S.hist = await api("history", { airport: S.icao, t0: S.t0 }); render(); }
     if (view === "eval" && (!S.ev || S.ev.lead !== S.lead || S.ev.icao !== S.icao)) { S.ev = { ...await api("eval", { airport: S.icao, lead: S.lead }), icao: S.icao }; render(); }
+    if (view === "storms" && (!S.st || S.st.lead !== S.lead || S.st.icao !== S.icao)) { S.st = await api("storm", { airport: S.icao, lead: S.lead }); render(); }
   } catch (e) { toast(e.message); }
 }
 function toast(msg) {
@@ -88,7 +91,7 @@ function renderShell() {
 function render() {
   renderShell();
   const v = $("#view"), keep = v.firstElementChild?.dataset.view === S.view ? v.firstElementChild.scrollTop : 0;
-  v.innerHTML = { outlook: outlookView, flights: flightsView, history: historyView, eval: evalView }[S.view]();
+  v.innerHTML = { outlook: outlookView, flights: flightsView, history: historyView, eval: evalView, storms: stormView }[S.view]();
   if (v.firstElementChild) v.firstElementChild.scrollTop = keep;
 }
 const loading = (view, what) => `<div class="page scroll" data-view="${view}"><p class="empty-note">Loading ${what}…</p></div>`;
@@ -224,6 +227,9 @@ function advisory(o, a) {
       <div class="ph" style="padding:0 0 10px">${I.doc}Recommendations<span class="meta">rule-based</span></div>
       ${advice}
       <p class="label mode">The advice comes from fixed, readable rules (src/advisory.py); the models only supply the forecasts. A qualified person decides.</p>
+      ${S.meta.explain ? `<div class="explain">${S.expl ? `<p class="sent"><span class="cite mono">AI</span><span>${esc(S.expl)}</span></p>
+        <p class="label">Plain-English summary by Claude, written only from the numbers above. It explains; it does not forecast or decide.</p>`
+        : `<button type="button" class="glass-btn" data-explain${S.busy ? " disabled" : ""}>Explain this outlook in plain English</button>`}</div>` : ""}
       <details class="trace"><summary class="label">How this outlook was made · 5 steps</summary><ol class="mono">
         <li>Weather: latest METAR published before ${hhmm(o.t0)}, used only if under 2 h old; TAF only if issued before ${hhmm(o.t0)} and valid for the target hour.</li>
         <li>Capacity: LightGBM forecasts AAR as a share of the ${o.aar_vfr}/h best case for +3 to +12 h; quantile models give the 80% range.</li>
@@ -382,6 +388,62 @@ function relChart(rows) {
     </svg><div class="legend label"><span><i style="background:var(--sky)"></i>Model, predicted vs observed</span><span><i style="background:var(--ink-3)"></i>Perfect calibration</span></div>`;
 }
 
+// ---------- storms: full-BTS pipeline evidence (reports/jho_*.csv via /api/storm) ----------
+function stormView() {
+  const s = S.st, leads = `<span class="seg" role="group" aria-label="Lead time">${[3, 6, 9, 12].map(l => `<button type="button" data-lead="${l}" aria-pressed="${S.lead === l}">+${l} h</button>`).join("")}</span>`;
+  if (!s) return loading("storms", "storm-hour results");
+  const bars = (rows, digits) => { const top = Math.max(...rows.map(r => r[1] ?? 0)) || 1;
+    return `<div class="m-bars">${rows.map(([l, v, tone]) => `<div><span class="label">${l}</span><span class="mb"><i class="${tone || ""}" style="width:${v == null ? 0 : Math.max(2, v / top * 100).toFixed(0)}%"></i></span><span class="mono">${v == null ? "—" : digits === "%" ? `${pct(v)}%` : v.toFixed(digits)}</span></div>`).join("")}</div>`; };
+  const metric = (label, value, unit, body, note) => `<div class="glass card metric"><div class="label">${label}</div><div class="readout">${value}<small>${unit}</small></div>${body}${note ? `<div class="label">${note}</div>` : ""}</div>`;
+  const tone = v => v === "model better" ? "good" : v === "model worse" ? "bad" : "accent";
+  const pill = v => `<span class="pill ${v === "model better" ? "ok" : v === "model worse" ? "stop" : "warn"}">${esc(v)}</span>`;
+  const sg = v => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(3)}`;
+  const a = s.arr, now = s.delay.filter(d => d.lead === S.lead);
+  return `<div class="page scroll" data-view="storms">
+    <header class="page-h"><div><h1>Before severe weather</h1><p class="lede">How forecasts made 3 to 12 hours ahead held up in ${s.iata}'s storm hours: hours with a NOAA Storm Event (thunderstorm wind, hail, tornado, flash flood) within 50 km.
+      NOAA logs are written after the event, so they only mark which 2025 test hours were storms and never feed a model. Scored on actual arrivals from the full BTS archive (3.26 M flights).</p></div>${leads}</header>
+    <div class="metrics">
+      ${metric(`Arrivals error in storm hours · RMSE · ${s.hours} hours`, a.model.toFixed(1), "/h",
+               bars([["Model", a.model, "good"], ["Climatology", a.clim], ["Schedule", a.sched], ["Persistence", a.persist]], 1),
+               `Normal hours ${a.all_hours.toFixed(1)}/h: errors are about ${(a.model / a.all_hours).toFixed(1)}× larger in storms. Lower is better.`)}
+      ${metric("90% range: outcomes inside, storm hours", pct(a.cover), "%", bars([["Storm hours", a.cover, "bad"], ["All hours", a.cover_all, "good"], ["Promised", 0.9]], "%"),
+               "Failure case: in storms the range is far too narrow. Read a storm-hour forecast as a warning, not an exact count.")}
+      ${now.map(d => metric(`Severe-delay ranking in storms · ${d.dir}s · PR-AUC`, d.model.toFixed(2), ` vs ${d.clim.toFixed(2)}`,
+               bars([["Model", d.model, tone(d.verdict)], ["Climatology", d.clim], ["Severe share", d.rate], ["Mean predicted", d.mean_p, "bad"]], 3),
+               `${d.flights} flights in ${d.hours} storm hours. Gain 95% interval ${sg(d.lo)} to ${sg(d.hi)}: ${d.verdict}.`)).join("")}
+    </div>
+    <div class="ins-grid">
+      <section class="glass card"><div class="ph">Arrivals error by lead time<span class="meta">RMSE, arrivals per hour</span></div>${stormLeadChart(s.by_lead)}</section>
+      <section class="glass card"><div class="ph">Storm-hour delay ranking vs climatology<span class="meta">all leads · 95% interval</span></div>
+        <div class="scroll" style="max-height:300px"><table class="evtab"><thead><tr><th>Type</th><th>Lead</th><th>Flights</th><th>Model</th><th>Climatology</th><th>Gain, 95% interval</th><th>Verdict</th></tr></thead><tbody>
+        ${s.delay.map(d => `<tr${d.lead === S.lead ? ' style="background:rgba(0,133,202,.08)"' : ""}><td>${d.dir === "arrival" ? "Arrival" : "Departure"}</td><td class="mono">+${d.lead} h</td><td class="mono">${d.flights}</td>
+          <td class="mono">${d.model.toFixed(3)}</td><td class="mono">${d.clim.toFixed(3)}</td><td class="mono">${sg(d.lo)} to ${sg(d.hi)}</td><td>${pill(d.verdict)}</td></tr>`).join("")}
+        </tbody></table></div></section>
+      ${s.fullbts?.length ? `<section class="glass card span2"><div class="ph">Same classifier on the full BTS archive, all 2025 hours<span class="meta">+${s.lead} h · LightGBM</span></div>
+        <table class="evtab"><thead><tr><th>Type</th><th>Test flights</th><th>Severe share</th><th>PR-AUC model</th><th>PR-AUC climatology</th><th>Precision</th><th>Recall</th></tr></thead><tbody>
+        ${s.fullbts.map(f => `<tr><td>${f.dir === "arrival" ? "Arrival" : "Departure"}</td><td class="mono">${n0(f.n)}</td><td class="mono">${pct(f.rate)}%</td><td class="mono">${f.model.toFixed(3)}</td>
+          <td class="mono">${f.clim.toFixed(3)}</td><td class="mono">${f.precision.toFixed(3)}</td><td class="mono">${f.recall.toFixed(3)}</td></tr>`).join("")}</tbody></table>
+        <div class="label" style="margin-top:10px">Trained on 2023-01 to 2024-06, threshold chosen on 2024 H2, scored once on 2025. About 45,000 test flights per row, so these intervals are tight.</div></section>` : ""}
+      <section class="glass card span2"><div class="ph">Known limits in storm hours<span class="meta">read before acting</span></div><ul class="limits">
+        <li>Few storm hours: ${s.hours} at ${s.iata} in the 2025 test period, so storm results are less certain than the overall ones.</li>
+        <li>In storms the model's probabilities run well below the observed severe-delay share. Treat any rise in risk as significant.</li>
+        <li>A TAF thunderstorm-timing feature (thunder within 2 h of the target hour) was tested and rejected on 2024 validation data.</li>
+        <li>Source: jho/aerocast_data (run_all.py), copied into reports/jho_*.csv. This target is real arrivals, so its RMSE is not comparable with the AAR RMSE on the Evaluation page.</li></ul></section>
+    </div></div>`;
+}
+function stormLeadChart(rows) {
+  const W = 520, Hh = 240, P = { l: 34, r: 10, t: 12, b: 26 }, top = Math.ceil(Math.max(...rows.flatMap(r => [r.storm, r.clim, r.all])) / 5) * 5;
+  const gw = (W - P.l - P.r) / rows.length, bw = gw / 4, Y = v => P.t + (1 - v / top) * (Hh - P.t - P.b);
+  const grid = []; for (let v = 0; v <= top; v += 5) grid.push(`<line class="grid" x1="${P.l}" x2="${W - P.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${P.l - 6}" y="${Y(v) + 4}" text-anchor="end">${v}</text>`);
+  const g = rows.map((r, i) => { const x = P.l + i * gw + gw / 2;
+    return `<rect x="${(x - bw - 2).toFixed(1)}" y="${Y(r.all)}" width="${bw}" height="${Y(0) - Y(r.all)}" rx="3" fill="var(--sky)"><title>+${r.lead} h · all hours ${r.all}/h</title></rect>
+      <rect x="${(x + 2).toFixed(1)}" y="${Y(r.storm)}" width="${bw}" height="${Y(0) - Y(r.storm)}" rx="3" fill="var(--stop)"><title>+${r.lead} h · storm hours ${r.storm}/h</title></rect>
+      <line x1="${(x - bw - 6).toFixed(1)}" x2="${(x + bw + 6).toFixed(1)}" y1="${Y(r.clim)}" y2="${Y(r.clim)}" stroke="var(--ink-2)" stroke-width="2" stroke-dasharray="3 3"><title>+${r.lead} h · climatology in storms ${r.clim}/h</title></line>
+      <text x="${x}" y="${Hh - 8}" text-anchor="middle">+${r.lead} h</text>`; }).join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Arrivals forecast error by lead time, all hours and storm hours">${grid.join("")}${g}</svg>
+    <div class="legend label"><span><i style="background:var(--sky)"></i>All hours</span><span><i style="background:var(--stop)"></i>Storm hours</span><span><i style="background:var(--ink-2)"></i>Climatology, storm hours</span></div>`;
+}
+
 // ---------- tour (Torque Stripe's spotlight pattern) ----------
 const STEPS = [
   { title: "Capacity & Risk", text: "A replay of the held-out 2025 period at Atlanta and Dallas/Fort Worth. Pick an issue time and see what the models would have said 3 to 12 hours ahead, then reveal what happened." },
@@ -391,6 +453,7 @@ const STEPS = [
   { sel: '[data-tour="weather"]', view: "outlook", title: "The weather the controller has", text: "The latest METAR. The stage shows it too: wind streaks, the cloud deck at the reported ceiling, haze for visibility, rain, snow and lightning." },
   { sel: '[data-tour="radar"]', view: "outlook", title: "Delay radar", text: "Sampled flights in the window. Centre is soonest, angle is the route bearing, colour is the severe-delay risk." },
   { sel: '[data-tab="eval"]', title: "Measured, not claimed", text: "RMSE, PR-AUC, calibration and the known failures, all on data the models never saw." },
+  { sel: '[data-tab="storms"]', title: "Before severe weather", text: "The same kind of forecast scored only on hours with a NOAA storm nearby, on the full BTS archive, including where it falls short." },
 ];
 function openTour(i = 0) {
   const s = STEPS[i]; if (s.view && S.view !== s.view) go(s.view);
@@ -409,7 +472,7 @@ function closeTour() { $("#overlay").innerHTML = ""; store.set("cr_tour_v1", "1"
 
 // ---------- events ----------
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-go],[data-tour-open],[data-tour-step],[data-tour-close],[data-ev],[data-sens],[data-reveal],[data-cam],[data-render],[data-flight],[data-lead]");
+  const t = e.target.closest("[data-go],[data-tour-open],[data-tour-step],[data-tour-close],[data-ev],[data-sens],[data-reveal],[data-cam],[data-render],[data-flight],[data-lead],[data-explain]");
   if (!t) return;
   const d = t.dataset;
   if (d.go) { e.preventDefault(); go(d.go); }
@@ -421,7 +484,12 @@ document.addEventListener("click", e => {
   else if ("reveal" in d) { S.reveal = !S.reveal; render(); }
   else if (d.cam) { S.cam = d.cam; stage?.setView(d.cam); document.querySelectorAll("[data-cam]").forEach(b => b.setAttribute("aria-pressed", b.dataset.cam === d.cam)); }
   else if (d.render) { S.render = d.render; stage?.setRender(d.render); document.querySelectorAll("[data-render]").forEach(b => b.setAttribute("aria-pressed", b.dataset.render === d.render)); }
-  else if (d.lead) { S.lead = +d.lead; S.ev = null; render(); ensure("eval"); }
+  else if (d.lead) { S.lead = +d.lead; S.ev = null; S.st = null; render(); ensure(S.view); }
+  else if ("explain" in d) {
+    t.disabled = true; t.textContent = "Asking Claude…";
+    api("explain", { airport: S.icao, t0: S.t0, sens: S.sens, thr: S.thr }).then(r => { S.expl = r.text; render(); })
+      .catch(err => { toast(err.message); t.disabled = false; t.textContent = "Explain this outlook in plain English"; });
+  }
   else if (d.flight) {
     S.sel = +d.flight; const el = document.getElementById(`f${d.flight}`);
     if (S.view === "outlook" && el) { document.querySelectorAll(".src.cur").forEach(x => x.classList.remove("cur")); el.classList.add("cur"); el.scrollIntoView({ behavior: "smooth", block: "center" }); }

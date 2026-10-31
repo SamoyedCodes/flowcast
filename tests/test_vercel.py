@@ -3,6 +3,7 @@ import json
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
 from threading import Thread
+from types import SimpleNamespace
 from urllib.parse import urlencode
 
 import pytest
@@ -72,12 +73,58 @@ def test_history_and_evaluation(api, airport):
             assert body["ladder"] and body["reliability"]
 
 
+@pytest.mark.parametrize("airport", ["KATL", "KDFW"])
+@pytest.mark.parametrize("lead", [3, 6, 9, 12])
+def test_storm_reports(api, airport, lead):
+    status, body = api("/api/storm", airport=airport, lead=lead)
+    assert status == 200 and body["icao"] == airport and body["lead"] == lead
+    assert body["hours"] > 0 and body["arr"]["model"] > 0
+    assert [r["lead"] for r in body["by_lead"]] == [3, 6, 9, 12]
+    assert {r["dir"] for r in body["delay"]} == {"arrival", "departure"}
+    assert body["fullbts"]
+
+
+def test_explain_without_key(api, monkeypatch):
+    from dashboard import server
+
+    monkeypatch.setattr(server, "api_key", lambda: None)
+    monkeypatch.setattr(server, "meta_cached", server.meta)
+    status, body = api("/api/meta")
+    assert status == 200 and body["explain"] is False
+    status, body = api("/api/explain", t0="2025-03-15T06")
+    assert status == 400 and "no ANTHROPIC_API_KEY" in body["error"]
+
+
+@pytest.mark.parametrize("upstream_fails", [False, True])
+def test_explain_with_mocked_claude(api, monkeypatch, upstream_fails):
+    from dashboard import server
+
+    def post(*args, **kwargs):
+        if upstream_fails:
+            raise server.requests.Timeout("private upstream details")
+        return SimpleNamespace(raise_for_status=lambda: None,
+                               json=lambda: {"content": [{"type": "text", "text": "Test outlook summary."}]})
+
+    monkeypatch.setattr(server, "api_key", lambda: "test-key")
+    monkeypatch.setattr(server, "meta_cached", server.meta)
+    monkeypatch.setattr(server.requests, "post", post)
+    status, body = api("/api/meta")
+    assert status == 200 and body["explain"] is True
+    status, body = api("/api/explain", airport="KDFW", t0="2025-02-18T17")
+    if upstream_fails:
+        assert status == 502 and "Claude summary unavailable" in body["error"]
+        assert "private upstream details" not in body["error"]
+    else:
+        assert status == 200 and body["text"] == "Test outlook summary."
+
+
 @pytest.mark.parametrize("path,query,expected", [
     ("/api/meta", {"airport": "UNKNOWN"}, 400),
     ("/api/outlook", {"t0": "invalid"}, 400),
     ("/api/outlook", {"t0": "2025-03-15T06", "thr": "invalid"}, 400),
     ("/api/eval", {"lead": "invalid"}, 400),
     ("/api/eval", {"lead": 99}, 400),
+    ("/api/storm", {"lead": 4}, 400),
     ("/api/unknown", {}, 404),
 ])
 def test_api_errors(api, path, query, expected):

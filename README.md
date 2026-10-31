@@ -45,6 +45,7 @@ Import the deployment branch into Vercel with these settings:
 | Output Directory | `dashboard/web` |
 | Python | 3.13 (provided by `.python-version`) |
 | Build environment variable (Preview and Production) | `VERCEL_PYTHON_DISABLE_RUNTIME_INSTALL=1` |
+| Optional runtime environment variable | `ANTHROPIC_API_KEY` enables Claude's plain-English outlook summary |
 
 Vercel serves the frontend assets from its CDN and routes `/api/*` to one Python function,
 which exports the same handler used locally. Only the frontend output is public; replay data and models
@@ -52,7 +53,9 @@ are function inputs. `.vercelignore` allowlists deployment inputs and excludes r
 notebooks, Streamlit, and training-only files. No build step runs the pipeline.
 Set the build environment variable above in Vercel Project Settings. It keeps dependencies in the function
 bundle and avoids the CLI's dependency-externalization failure for newer Linux wheel tags when building on macOS.
-The application itself requires no credentials or API keys.
+The Storms view uses the bundled `reports/jho_*.csv` files. The optional Claude summary requires
+`ANTHROPIC_API_KEY` in Vercel's environment; its button stays hidden without a key. Local `.env` files
+are excluded from deployment. All other dashboard views work without credentials.
 
 To refresh the replay snapshot, install the development requirements, run `python run_pipeline.py` locally
 (or `--skip-download` with a complete verified cache), then run
