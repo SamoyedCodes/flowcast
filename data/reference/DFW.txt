@@ -1,0 +1,390 @@
+DFW             AIRPORT CAPACITY PROFILE:
+     DALLAS/FORT-WORTH INTERNATIONAL AIRPORT
+
+Airport capacity profile estimates were created using a standard set of performance characteristics and do not take into account non-runway constraints, unless
+otherwise noted. The capacity estimates developed for this report are not intended to replace the results of any detailed analysis that would precede an
+environmental, investment, or policy decision.
+
+The list of Future Improvements and their expected effects on capacity does not imply FAA commitment to, or approval of, any item on the list.
+     DALLAS/FORT-WORTH INTERNATIONAL AIRPORT OVERVIEW
+
+      About this Airport Capacity Profile
+
+       The capacity profile shows the hourly throughput that an airport is able to sustain during
+          periods of high demand, represented as the range between the model-estimated capacity and
+          the ATC facility reported rate (called rate). Each weather condition has a unique capacity rate
+          range.
+
+       For each weather scenario, capacity estimates are based on information provided by ATC,
+          including reported arrival and departure rates.
+
+      Recent Capacity Changes at DFW
+
+       Time-Based Flow Management (TBFM) helps to improve the flow of arrivals to the runways.
+
+       Arrival-Departure Window (ADW) helps to minimize the long-term risk associated with arrival
+          and departure operations on intersecting and converging runways. A range window prior to the
+          arrival runway threshold is depicted on the controller's radar monitor. The departing flight
+          cannot be released if the arrival is within that window, minimizing the risk of separation loss
+          with the departing aircraft in the event the arrival executes a missed approach. DFW has an
+          ADW in place for operations between Runways 31R and 35L for the North Flow, and Runways
+          13R and 18L for the South Flow. The ADWs were implemented at DFW in May 2014.
+
+      Future Improvements at DFW
+
+       Improved Runway Delivery Accuracy: The combined effects of several new capabilities,
+          including Automatic Dependent Surveillance-Broadcast (ADS-B) Out, Cockpit Display of Traffic
+          Information (CDTI), and Terminal Sequencing and Spacing (TSAS) in the terminal area, will
+          improve the ability of controllers to deliver aircraft to the runway with the desired separation
+          from the preceding aircraft. This will reduce the average spacing between arrivals and boost
+          arrival capacity.
+
+       Wake Recategorization Phase 1 assigns aircraft to new wake turbulence classifications based on
+          their wake turbulence characteristics, such as wake generation, wake decay, and encounter
+          effects. This results in closer longitudinal separation for certain aircraft types without sacrificing
+          safety.
+
+       End Around Taxiways on the northeast and southwest sides of the airport will improve surface
+          efficiency with reduced taxi times and delay.
+
+DFW  Airport Capacity Profile                                                                                     2
+     DALLAS/FORT-WORTH INTERNATIONAL AIRPORT OVERVIEW - 2
+
+     CURRENT OPERATIONS CAPACITY RATE RANGE  ANNUAL WEATHER CONDITIONS
+
+                                             VISUAL CONDITIONS:
+                                                  Ceiling and visibility allow for visual approaches: at
+                                                    least 3000 feet ceiling and 7 miles visibility
+
+                                             MARGINAL CONDITIONS:
+                                                  Ceiling and visibility below visual approach minima but
+                                                    better than Instrument conditions
+
+                                             INSTRUMENT CONDITIONS:
+                                                  Ceiling and visibility below 1000 feet ceiling or 3 miles
+                                                    visibility
+
+     Data Sources
+
+      Actual hourly DFW operations, weather and configuration data were obtained from
+       the FAA ASPM database, and represent operational hours from 7am to 11pm local
+       time for all October 2015 through September 2017. Actual configuration usage is
+       determined by multiple operational factors, including weather conditions.
+
+      Facility reported rates were provided by ATC personnel at DFW.
+
+      Model-estimated rates are derived from operational information provided by ATC.
+
+DFW  Airport Capacity Profile                                                                                3
+VISUAL ­ NORTH FLOW                                  VISUAL APPROACHES, VISUAL SEPARATION
+
+                   Type Operations                                              Hourly Rate
+  CURRENT OPERATIONS
+  FUTURE IMPROVEMENTS               Arrival Runways  Departure Runways     ATC Facility   Model-
+                                                         31L,35L,36R        Reported     Estimated
+                                    31R,35C,35R,36L
+                                    31R,35C,35R,36L                        204               187
+
+                                                              31L,35L,36R  N/A               187
+
+      Future improvements: Improved Runway Delivery Accuracy, Wake
+       Recategorization Phase 1, End Around Taxiways.
+
+      The capacity rate range in Visual conditions in North flow is currently 187-204
+       operations per hour.
+
+      The airport does not use visual spacing behind B757s and Heavy aircraft in visual
+       conditions.
+
+      The airport has an ADW in place for arrivals to 31R and departures from 35L.
+
+      A380s and B748s can currently only operate on Runways 36L and 36R.
+
+DFW                                 Airport Capacity Profile                                        4
+VISUAL ­ NORTH FLOW         VISUAL APPROACHES, VISUAL SEPARATION
+
+ VISUAL WEATHER CONDITIONS
+
+     Actual traffic counts shown are for all Visual hours, all configurations.
+
+DFW                         Airport Capacity Profile                            5
+VISUAL ­ SOUTH FLOW                                  VISUAL APPROACHES, VISUAL SEPARATION
+
+                   Type Operations                                           Hourly Rate
+  CURRENT OPERATIONS
+  FUTURE IMPROVEMENTS               Arrival Runways  Departure Runways  ATC Facility      Model-
+                                                            17R,18L      Reported        Estimated
+                                    13R,17C,17L,18R
+                                    13R,17C,17L,18R                     204               199
+
+                                                              17R,18L   N/A               201
+
+      Future improvements: Improved Runway Delivery Accuracy, Wake
+       Recategorization Phase 1, End Around Taxiways.
+
+      The capacity rate range in Visual conditions in South flow is currently 199-204
+       operations per hour.
+
+      The airport does not use visual spacing behind B757s and Heavy aircraft in visual
+       conditions.
+
+      The airport has an ADW in place for arrivals to 13R and departures from 18L.
+
+      A380s and B748s can currently only operate on Runways 18L and 18R.
+
+DFW                                 Airport Capacity Profile                                        6
+VISUAL ­ SOUTH FLOW         VISUAL APPROACHES, VISUAL SEPARATION
+
+ VISUAL WEATHER CONDITIONS
+
+     Actual traffic counts shown are for all Visual hours, all configurations.
+
+DFW                         Airport Capacity Profile                            7
+MARGINAL ­ NORTH FLOW               INSTRUMENT APPROACHES, RADAR SEPARATION
+
+                   Type Operations                                              Hourly Rate
+  CURRENT OPERATIONS
+  FUTURE IMPROVEMENTS               Arrival Runways  Departure Runways     ATC Facility   Model-
+                                                         31L,35L,36R        Reported     Estimated
+                                    31R,35C,35R,36L
+                                    31R,35C,35R,36L                        192               186
+
+                                                              31L,35L,36R  N/A               186
+
+      Future improvements: Improved Runway Delivery Accuracy, Wake
+       Recategorization Phase 1, End Around Taxiways.
+
+      The capacity rate range in Marginal conditions in North flow is currently 186-192
+       operations per hour.
+
+      The airport does not use visual spacing behind B757s and Heavy aircraft in
+       marginal conditions.
+
+      Reduced separation (2.5 NM) between arrivals is authorized for instrument
+       approaches to runways 31R, 35C, 35R, 36L at DFW.
+
+      The airport has an ADW in place for arrivals to 31R and departures from 35L.
+      A380s and B748s can currently only operate on Runways 36L and 36R.
+
+DFW                                 Airport Capacity Profile                                        8
+MARGINAL ­ NORTH FLOW         INSTRUMENT APPROACHES, RADAR SEPARATION
+
+ MARGINAL WEATHER CONDITIONS
+
+     Actual traffic counts shown are for all Marginal hours, all configurations.
+
+DFW                           Airport Capacity Profile                            9
+MARGINAL ­ SOUTH FLOW               INSTRUMENT APPROACHES, RADAR SEPARATION
+
+                   Type Operations                                           Hourly Rate
+  CURRENT OPERATIONS
+  FUTURE IMPROVEMENTS               Arrival Runways  Departure Runways  ATC Facility      Model-
+                                                            17R,18L      Reported        Estimated
+                                    13R,17C,17L,18R
+                                    13R,17C,17L,18R                     192               187
+
+                                                              17R,18L   N/A               191
+
+      Future improvements: Improved Runway Delivery Accuracy, Wake
+       Recategorization Phase 1, End Around Taxiways.
+
+      The capacity rate range in Marginal conditions in South flow is currently 187-192
+       operations per hour.
+
+      Reduced separation (2.5 NM) between arrivals is authorized for instrument
+       approaches to runways 13R, 17C, 17L, 18R at DFW.
+
+      The airport does not use visual spacing behind B757s and Heavy aircraft in
+       marginal conditions.
+
+      The airport has an ADW in place for arrivals to 13R and departures from 18L.
+
+      A380s and B748s can currently only operate on Runways 18L and 18R.
+
+DFW                                 Airport Capacity Profile                                        10
+MARGINAL ­ SOUTH FLOW         INSTRUMENT APPROACHES, RADAR SEPARATION
+
+ MARGINAL WEATHER CONDITIONS
+
+     Actual traffic counts shown are for all Marginal hours, all configurations.
+
+DFW                           Airport Capacity Profile                            11
+INSTRUMENT ­ NORTH FLOW           INDEPENDENT APPROACHES, RADAR SEPARATION
+
+                                                                              Hourly Rate
+
+                 Type Operations  Arrival Runways  Departure Runways     ATC Facility    Model-
+                                                       31L,35L,36R        Reported      Estimated
+CURRENT OPERATIONS                  35C,35R,36L
+FUTURE IMPROVEMENTS                 35C,35R,36L                          170               168
+
+                                                            31L,35L,36R  N/A               170
+
+      Future improvements: Improved Runway Delivery Accuracy, Wake
+       Recategorization Phase 1, End Around Taxiways.
+
+      The capacity rate range in Instrument conditions in North flow is currently 168-
+       170 operations per hour.
+
+      Reduced separation (2.5 NM) between arrivals is authorized for instrument
+       approaches to runways 35C, 35R, 36L at DFW.
+
+      A380s and B748s can currently only operate on Runways 36L and 36R.
+
+DFW                               Airport Capacity Profile                                         12
+INSTRUMENT ­ NORTH FLOW         INDEPENDENT APPROACHES, RADAR SEPARATION
+
+ INSTRUMENT WEATHER CONDITIONS
+
+     Actual traffic counts shown are for all Instrument hours, all configurations.
+
+DFW                             Airport Capacity Profile                            13
+INSTRUMENT ­ SOUTH FLOW           INDEPENDENT APPROACHES, RADAR SEPARATION
+
+                                                                           Hourly Rate
+
+                 Type Operations  Arrival Runways  Departure Runways  ATC Facility       Model-
+                                                          17R,18L      Reported         Estimated
+CURRENT OPERATIONS                  17C,17L,18R
+FUTURE IMPROVEMENTS                 17C,17L,18R                       170               174
+
+                                                            17R,18L   N/A               186
+
+      Future improvements: Improved Runway Delivery Accuracy, Wake
+       Recategorization Phase 1, End Around Taxiways.
+
+      The capacity rate range in Instrument conditions in South flow is currently 170-
+       174 operations per hour.
+
+      Reduced separation (2.5 NM) between arrivals is authorized for instrument
+       approaches to runways 17C, 17L, 18R at DFW.
+
+      A380s and B748s can currently only operate on Runways 18L and 18R.
+
+DFW                               Airport Capacity Profile                                         14
+INSTRUMENT ­ SOUTH FLOW         INDEPENDENT APPROACHES, RADAR SEPARATION
+
+ INSTRUMENT WEATHER CONDITIONS
+
+     Actual traffic counts shown are for all Instrument hours, all configurations.
+
+DFW                             Airport Capacity Profile                            15
+HISTORICAL CALLED RATE AND CONFIGURATION USAGE BY FLOW
+
+DFW  Airport Capacity Profile                           16
+NORTH FLOW ­ HISTORICAL USAGE
+
+      Airport Called Rates*                                                Configuration Usage
+
+114 and 102 AARs common                                                    31R,35C,35R,26L|31L,35L,36R (10%)                                                                                 WIND &
+with four arrival runways                                                                                                                                                                   WEATHER
+                                                                                                              RATES
+                                                                                                       114,90 (42%)                                                                         VMC: 89%
+                                                                                                        96,90 (15%)                                                                         MMC: 11%
+                                                                                                        90,90 (11%)
+                                                                                                                                                                                             IMC: 1%
+
+                                                                           102,90 (8%)
+
+                                                                           90,80 (5%)
+
+                                                                           35C,35R,36L|31L,35L,36R (6%)                                                                                      WIND &
+                                                                                                                                                                                            WEATHER
+                                                                                                              RATES
+                                                                                                        96,90 (40%)                                                                         VMC: 58%
+                                                                                                        90,80 (25%)                                                                         MMC: 25%
+                                                                                                        90,90 (15%)                                                                         IMC: 17%
+                                                                                                        84,80 (10%)
+    96 and 90 AARs called for
+    common configurations                                                  Other North Flow > 2%
+                                                                           · 35C,35R,36L|35L,36R (3%)
+80 ADR called occasionally,                                                · 31R,35C,35R,36L|35L,36R (2%)
+typically with low ceiling/visibility                                      South Flow Configurations
+
+                                                                           Other Configurations
+
+                                       90 ADR common                       Key
+
+                                                                           Arrivals|Departures (% of time in configuration)
+
+           AARs below 90 very infrequent in North flow                                 Arrivals
+Many rates called < 2% of time and are not shown
+                                                                                     Departures
+                                                                                RATES
+
+                                                                            90,90 (90%) Rates called at least 5% of time when
+                                                                                               configuration used
+
+                                                                           WIND & WEATHER
+
+                                                                                              Wind speeds increase away from center
+                                                                                              (3 knot increments)
+
+Other rates: 24.0%                                                         More common winds are darker
+Color indicates configuration
+                               NORTH FLOW FACILITY REPORTED RATES          % of time spent in VMC/MMC/IMC when configuration used
+
+* Rates for all hours regardless of 114,90 (VMC) 102,90 (MMC) 90,80 (IMC)
+
+configuration, minimum 2% of time                                                                                                                                                           17
+
+                                                                      All data for hours from May 2014 ­ Sept 2015, 7 AM to 11 PM. Excludes variable winds and missing or incomplete data.
+SOUTH FLOW ­ HISTORICAL USAGE
+
+           Airport Called Rates*                                           Configuration Usage
+
+     114 and 102 AARs common                                               13R,17C,17L,18R|17R,18L (37%)                                                                                    WIND &
+     with four arrival runways                                                                                                                                                              WEATHER
+                                                                                                              RATES
+96 and 90 AARs called for common configurations,
+especially with three arrival runways                                      114,90 (47%)                                                                                                     VMC: 90%
+                                                                           102,90 (13%)                                                                                                     MMC: 10%
+
+                                                                            96,90 (9%)                                                                                                       IMC: 1%
+
+                                                                           90,90 (8%)
+
+                                                                           17C,17L,18R|17R,18L (18%)                                                                                         WIND &
+                                                                                                                                                                                            WEATHER
+                                                                                                              RATES
+                                                                                                                                                                                            VMC: 76%
+                                                                                                       96,90 (43 %)                                                                         MMC: 13%
+                                                                                                                                                                                            IMC: 11%
+                                                                                                        90,90 (28%)
+
+                                                                                                        90,80 (15%)
+
+                                                                           Other South Flow > 2%
+                                                                           · 13R,17C,18R|17R,18L (5%)
+                                                                           · 13R,17L,18R|17R,18L (5%)
+                                                                           North Flow Configurations
+
+                                                                           Other Configurations
+
+80 ADR called occasionally,            90 ADR common                       Key
+typically with low ceiling/visibility
+                                                                           Arrivals|Departures (% of time in configuration)
+
+                              AARs below 90 often called with                          Arrivals
+                              less frequent configurations
+                                                                                     Departures
+Many rates called < 2% of time and are not shown                                RATES
+
+                                                                            90,90 (90%) Rates called at least 5% of time when
+                                                                                               configuration used
+
+                                                                           WIND & WEATHER
+
+                                                                                              Wind speeds increase away from center
+                                                                                              (3 knot increments)
+
+Other rates: 24.0%                                                         More common winds are darker
+Color indicates configuration
+                               SOUTH FLOW FACILITY REPORTED RATES          % of time spent in VMC/MMC/IMC when configuration used
+
+* Rates for all hours regardless of 114,90 (VMC) 102,90 (MMC) 90,80 (IMC)
+
+configuration, minimum 2% of time                                                                                                                                                           18
+
+                                                                      All data for hours from May 2014 ­ Sept 2015, 7 AM to 11 PM. Excludes variable winds and missing or incomplete data.
+

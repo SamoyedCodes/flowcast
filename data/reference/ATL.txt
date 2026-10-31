@@ -1,0 +1,513 @@
+ATL                  AIRPORT CAPACITY PROFILE:
+     HARTSFIELD-JACKSON ATLANTA INTERNATIONAL AIRPORT
+
+Airport capacity profile estimates were created using a standard set of performance characteristics and do not take into account non-runway constraints, unless
+otherwise noted. The capacity estimates developed for this report are not intended to replace the results of any detailed analysis that would precede an
+environmental, investment, or policy decision.
+
+The list of Future Improvements and their expected effects on capacity does not imply FAA commitment to, or approval of, any item on the list.
+     HARTSFIELD-JACKSON ATLANTA INTERNATIONAL AIRPORT (ATL) OVERVIEW
+
+                 About this Airport Capacity Profile
+
+                      The capacity profile shows the hourly throughput that an airport is able to sustain during
+                        periods of high demand, represented as the range between the model-estimated capacity and
+                        the ATC facility-reported rate (called rate). Each weather condition has a capacity rate range.
+
+                      For each weather scenario, capacity estimates are based on information provided by ATC,
+                        including reported arrival and departure rates.
+
+                 Recent Capacity Improvements at ATL
+
+                      Time-Based Flow Management (TBFM) helps to improve the flow of arrivals to the runways.
+
+                      Wake Recategorization Phase 1 assigns aircraft to new wake turbulence classifications based on
+                        their wake turbulence characteristics, such as wake generation, wake decay, and encounter
+                        effects. This results in closer longitudinal separation for certain aircraft types without
+                        sacrificing safety.
+
+                      Same Runway Departure Fanning using Equivalent Lateral Spacing Operations (ELSO) is in use
+                        at ATL. This improvement allows reduced separation between successive departures due to the
+                        availability of new Standard Instrument Departure (SID) procedures which provide more
+                        precise guidance and control for departing aircraft.
+
+                 Future Improvements at ATL
+
+                      Improved Runway Delivery Accuracy: The combined effects of several new capabilities,
+                        including Automatic Dependent Surveillance-Broadcast (ADS-B) Out, Cockpit Display of Traffic
+                        Information (CDTI), and Terminal Sequencing and Spacing (TSAS) in the terminal area, will
+                        improve the ability of controllers to deliver aircraft to the runway with the desired separation
+                        from the preceding aircraft. This will reduce the average spacing between arrivals and boost
+                        arrival capacity.
+
+                      Wake Recategorization Phase 2 assigns aircraft to new wake turbulence classifications based on
+                        their wake turbulence characteristics, such as wake generation, wake decay, and encounter
+                        effects. This results in closer longitudinal separation for certain aircraft types without sacrificing
+                        safety.
+
+                      The end around taxiway around the end of Runway 09L will allow for the movement of aircraft
+                        to the terminal in West Flow without needing to cross Runway 09L/27R.
+
+ATL  Airport Capacity Profile                                                                                                   2
+     HARTSFIELD-JACKSON ATLANTA INTERNATIONAL AIRPORT OVERVIEW - 2
+
+     CURRENT OPERATIONS CAPACITY RATE RANGE  ANNUAL WEATHER CONDITIONS
+
+                                                                                   VISUAL CONDITIONS:
+                                                                                         Ceiling and visibility allow for visual approaches: at
+                                                                                           least 5000 feet ceiling and 6 miles visibility
+
+                                                                                    MARGINAL CONDITIONS:
+                                                                                         Ceiling and visibility below visual approach minima but
+                                                                                           better than Instrument conditions
+
+                                                                                    INSTRUMENT CONDITIONS:
+                                                                                         Ceiling and visibility below 1000 feet ceiling or 3 miles
+                                                                                           visibility but better than low instrument conditions
+
+                                                                                    LOW INSTRUMENT CONDITIONS:
+                                                                                         Ceiling and visibility below 500 feet ceiling or 1 mile
+                                                                                           visibility
+
+     Data Sources
+
+      Throughout the profile, actual hourly ATL operations, weather and configuration data were
+        obtained from the FAA ASPM database, and represent operational hours from 7am to 11pm
+        local time for October 1, 2014 through September 30, 2017. Actual configuration usage is
+        determined by multiple operational factors, including weather conditions.
+
+      Facility-reported rates were provided by ATC personnel at ATL.
+
+      Model-estimated rates are derived from operational information provided by ATC.
+
+ATL  Airport Capacity Profile                                                                                                                       3
+VISUAL ­ EAST FLOW                                   VISUAL APPROACHES, VISUAL SEPARATION
+
+                   Type Operations                                           Hourly Rate
+  CURRENT OPERATIONS
+  FUTURE IMPROVEMENTS               Arrival Runways  Departure Runways  ATC Facility-   Model-
+                                                            08R,09L      Reported      Estimated
+                                       08L,09R,10
+                                       08L,09R,10                       250               252
+
+                                                              08R,09L   N/A               260
+
+      Future improvements: Improved Runway Delivery Accuracy, Wake
+       Recategorization Phase 2
+
+      The capacity rate range in Visual conditions in East flow is currently 250-252
+       operations per hour.
+
+      Same runway departure fanning is conducted from Runways 08R and 09L. This
+       procedure enables higher departure throughput by reducing the minimum time
+       required between successive departures.
+
+      Runway crossings are not modeled because preferred taxi paths allow arrivals to
+       cross behind departing aircraft in East flow.
+
+ATL                                 Airport Capacity Profile                                      4
+VISUAL ­ EAST FLOW          VISUAL APPROACHES, VISUAL SEPARATION
+
+ VISUAL WEATHER CONDITIONS
+
+     Actual traffic counts shown are for all Visual hours, all configurations.
+                      For data source information, see page 3.
+
+ATL                         Airport Capacity Profile                            5
+VISUAL ­ WEST FLOW                                   VISUAL APPROACHES, VISUAL SEPARATION
+
+                   Type Operations                                           Hourly Rate
+  CURRENT OPERATIONS
+  FUTURE IMPROVEMENTS               Arrival Runways  Departure Runways  ATC Facility-     Model-
+                                                            26L,27R      Reported        Estimated
+                                       26R,27L,28
+                                       26R,27L,28                       240               231
+
+                                                              26L,27R   N/A               268
+
+      Future improvements: Improved Runway Delivery Accuracy, Wake
+       Recategorization Phase 2, End Around Taxiway
+
+      The capacity rate range in Visual conditions in West flow is currently 231-240
+       operations per hour.
+
+      Same runway departure fanning is conducted from Runways 26L and 27R. This
+       procedure enables higher departure throughput by reducing the minimum time
+       required between successive departures.
+
+      Runway crossings have been modeled on the South side of the airport terminal to
+       reflect current operations. This assumption is removed in the future scenario to
+       reflect completion of the planned end around taxiway.
+
+ATL                                 Airport Capacity Profile                                        6
+VISUAL ­ WEST FLOW          VISUAL APPROACHES, VISUAL SEPARATION
+
+ VISUAL WEATHER CONDITIONS
+
+     Actual traffic counts shown are for all Visual hours, all configurations.
+                      For data source information, see page 3.
+
+ATL                         Airport Capacity Profile                            7
+MARGINAL ­ EAST FLOW                 TWO VISUAL APPROACHES, VISUAL SEPARATION
+                                  ONE INSTRUMENT APPROACH, RADAR SEPARATION
+
+                                                                           Hourly Rate
+
+                 Type Operations  Arrival Runways  Departure Runways  ATC Facility-       Model-
+                                                          08R,09L      Reported          Estimated
+CURRENT OPERATIONS                   08L,09R,10
+FUTURE IMPROVEMENTS                  08L,09R,10                       242                248
+
+                                                            08R,09L   N/A                252
+
+      Future improvements: Improved Runway Delivery Accuracy, Wake
+       Recategorization Phase 2
+
+      The capacity rate range in Marginal conditions in East flow is currently 242-248
+       operations per hour.
+
+      Reduced separation (2.5 NM) between arrivals is authorized for instrument
+       approaches to all arrival runways.
+
+      Visual approaches are run to Runways 08L and 10, while an instrument approach
+       is used to Runway 09R.
+
+      Same runway departure fanning is conducted from Runways 08R and 09L. This
+       procedure enables higher departure throughput by reducing the minimum time
+       required between successive departures.
+
+      Runway crossings are not modeled because preferred taxi paths allow arrivals to
+       cross behind departing aircraft in East flow.
+
+      As ATL approaches Marginal conditions, ATC loses the ability to run visual
+       approaches to all three runways. Instead, a combination of visual and instrument
+       approaches is used. This Marginal configuration occurs most frequently.
+
+ATL                               Airport Capacity Profile                                          8
+MARGINAL ­ EAST FLOW             TWO VISUAL APPROACHES, VISUAL SEPARATION
+                              ONE INSTRUMENT APPROACH, RADAR SEPARATION
+ MARGINAL WEATHER CONDITIONS
+
+     Actual traffic counts shown are for all Marginal hours, all configurations.
+                        For data source information, see page 3.
+
+ATL                           Airport Capacity Profile                            9
+MARGINAL ­ WEST FLOW                 TWO VISUAL APPROACHES, VISUAL SEPARATION
+                                  ONE INSTRUMENT APPROACH, RADAR SEPARATION
+
+                                                                           Hourly Rate
+
+                 Type Operations  Arrival Runways  Departure Runways  ATC Facility-       Model-
+                                                          26L,27R      Reported          Estimated
+CURRENT OPERATIONS                   26R,27L,28
+FUTURE IMPROVEMENTS                  26R,27L,28                       232                228
+
+                                                            26L,27R   N/A                260
+
+      Future improvements: Improved Runway Delivery Accuracy, Wake
+       Recategorization Phase 2, End Around Taxiway
+
+      The capacity rate range in Marginal conditions in West flow is currently 228-232
+       operations per hour.
+
+      Reduced separation (2.5 NM) between arrivals is authorized for instrument
+       approaches to all arrival runways.
+
+      Visual approaches are run to Runways 26R and 28, while an instrument approach
+       is used to Runway 27L.
+
+      Same runway departure fanning is conducted from Runways 26L and 27R. This
+       procedure enables higher departure throughput by reducing the minimum time
+       required between successive departures.
+
+      Runway crossings have been modeled on the South side of the airport terminal to
+       reflect current operations. This assumption is removed in the future scenario to
+       reflect completion of the planned end around taxiway.
+
+      As ATL approaches Marginal conditions, ATC loses the ability to run visual
+       approaches to all three runways. Instead, a combination of visual and instrument
+       approaches is used. This Marginal configuration occurs most frequently.
+
+ATL                               Airport Capacity Profile                                          10
+MARGINAL ­ WEST FLOW             TWO VISUAL APPROACHES, VISUAL SEPARATION
+                              ONE INSTRUMENT APPROACH, RADAR SEPARATION
+ MARGINAL WEATHER CONDITIONS
+
+     Actual traffic counts shown are for all Marginal hours, all configurations.
+                        For data source information, see page 3.
+
+ATL                           Airport Capacity Profile                            11
+INSTRUMENT ­ EAST FLOW                               INSTRUMENT APPROACHES, RADAR SEPARATION
+
+                   Type Operations                                           Hourly Rate
+  CURRENT OPERATIONS
+  FUTURE IMPROVEMENTS               Arrival Runways  Departure Runways  ATC Facility-      Model-
+                                                            08R,09L      Reported         Estimated
+                                       08L,09R,10
+                                       08L,09R,10                       204               200
+
+                                                              08R,09L   N/A               210
+
+      Future improvements: Improved Runway Delivery Accuracy, Wake
+       Recategorization Phase 2
+
+      The capacity rate range in Instrument conditions in East flow is currently 200-204
+       operations per hour.
+
+      Reduced separation (2.5 NM) between arrivals is authorized for instrument
+       approaches to all arrival runways.
+
+      Same runway departure fanning is conducted from Runways 08R and 09L. This
+       procedure enables higher departure throughput by reducing the minimum time
+       required between successive departures.
+
+      Runway crossings are not modeled because preferred taxi paths allow arrivals to
+       cross behind departing aircraft in East flow.
+
+ATL                                 Airport Capacity Profile                                         12
+INSTRUMENT ­ EAST FLOW          INSTRUMENT APPROACHES, RADAR SEPARATION
+
+ INSTRUMENT WEATHER CONDITIONS
+
+     Actual traffic counts shown are for all Instrument hours, all configurations.
+                         For data source information, see page 3.
+
+ATL                             Airport Capacity Profile                            13
+INSTRUMENT ­ WEST FLOW                               INSTRUMENT APPROACHES, RADAR SEPARATION
+
+                   Type Operations                                           Hourly Rate
+  CURRENT OPERATIONS
+  FUTURE IMPROVEMENTS               Arrival Runways  Departure Runways  ATC Facility-      Model-
+                                                            26L,27R      Reported         Estimated
+                                       26R,27L,28
+                                       26R,27L,28                       204               197
+
+                                                              26L,27R   N/A               207
+
+      Future improvements: Improved Runway Delivery Accuracy, Wake
+       Recategorization Phase 2
+
+      The capacity rate range in Instrument conditions in West flow is currently 197-204
+       operations per hour.
+
+      Reduced separation (2.5 NM) between arrivals is authorized for instrument
+       approaches to all arrival runways
+
+      Same runway departure fanning is conducted from Runways 26L and 27R. This
+       procedure enables higher departure throughput by reducing the minimum time
+       required between successive departures.
+
+      Runway crossings were not explicitly modeled in this configuration because arrival
+       departure dependencies in Instrument conditions allows natural crossing gaps to
+       occur.
+
+ATL                                 Airport Capacity Profile                                         14
+INSTRUMENT ­ WEST FLOW          INSTRUMENT APPROACHES, RADAR SEPARATION
+
+ INSTRUMENT WEATHER CONDITIONS
+
+     Actual traffic counts shown are for all Instrument hours, all configurations.
+                         For data source information, see page 3.
+
+ATL                             Airport Capacity Profile                            15
+LOW INSTRUMENT ­ EAST FLOW                         INSTRUMENT APPROACHES, RADAR SEPARATION
+
+                                                                           Hourly Rate
+
+                 Type Operations  Arrival Runways  Departure Runways  ATC Facility-         Model-
+                                                          08R,09L      Reported            Estimated
+CURRENT OPERATIONS                   08L,09R,10
+FUTURE IMPROVEMENTS                  08L,09R,10                       182                  186
+
+                                                            08R,09L   N/A                  194
+
+      Future improvements: Improved Runway Delivery Accuracy, Wake
+       Recategorization Phase 2.
+
+      The capacity rate range in Low Instrument conditions in East flow is currently 182-
+       186 operations per hour.
+
+      Reduced separation (2.5 NM) between arrivals is not available during Low
+       Instrument conditions.
+
+      Same runway departure fanning is conducted from Runways 08R and 09L. This
+       procedure enables higher departure throughput by reducing the minimum time
+       required between successive departures.
+
+      Runway crossings are not modeled because preferred taxi paths allow arrivals to
+       cross behind departing aircraft in East flow.
+
+ATL                               Airport Capacity Profile                                            16
+LOW INSTRUMENT ­ EAST FLOW          INSTRUMENT APPROACHES, RADAR SEPARATION
+
+ LOW INSTRUMENT WEATHER CONDITIONS
+
+     Actual traffic counts shown are for all Instrument hours, all configurations.
+                         For data source information, see page 3.
+
+ATL                                 Airport Capacity Profile                        17
+LOW INSTRUMENT ­ WEST FLOW                         INSTRUMENT APPROACHES, RADAR SEPARATION
+
+                                                                           Hourly Rate
+
+                 Type Operations  Arrival Runways  Departure Runways  ATC Facility-        Model-
+                                                          26L,27R      Reported           Estimated
+CURRENT OPERATIONS                   26R,27L,28
+FUTURE IMPROVEMENTS                  26R,27L,28                       178                 177
+
+                                                            26L,27R   N/A                 189
+
+      Future improvements: Improved Runway Delivery Accuracy, Wake
+       Recategorization Phase 2
+
+      The capacity rate range in Instrument conditions in West flow is currently 177-178
+       operations per hour.
+
+      Reduced separation (2.5 NM) between arrivals is not available during Low
+       Instrument conditions.
+
+      Same runway departure fanning is conducted from Runways 26L and 27R. This
+       procedure enables higher departure throughput by reducing the minimum time
+       required between successive departures.
+
+      Runway crossings were not explicitly modeled in this configuration because arrival
+       departure dependencies in Low Instrument conditions allows natural crossing
+       gaps to occur.
+
+ATL                               Airport Capacity Profile                                           18
+LOW INSTRUMENT ­ WEST FLOW          INSTRUMENT APPROACHES, RADAR SEPARATION
+
+ LOW INSTRUMENT WEATHER CONDITIONS
+
+     Actual traffic counts shown are for all Instrument hours, all configurations.
+                         For data source information, see page 3.
+
+ATL                                 Airport Capacity Profile                        19
+HISTORICAL CALLED RATE AND CONFIGURATION USAGE BY FLOW
+
+ATL  Airport Capacity Profile                           20
+HISTORICAL USAGE - EAST FLOW
+
+                                   Called Rates                                                                Configuration Usage
+
+                                                                               132,118 is most commonly
+                                                                               used rate in East Flow
+
+132                                                                                                            8L,9R,10 I8R,9L (34%}                                              WIND&
+
+                                                                                                               ~·.~"!:~:::--..                                              WEATHER
+
+                                                                                                                                         RATES
+
+                                                                                                               ____ - ~ 8           il>  132,118 (33%)                      VMC: 70%
+                                                                                                                                         124,118 (17%)                      MMC: 15%
+                                   , 29.5%                              11.5%                                   -·HHHdt ; ; ..
+                                                                                                                                                                             IMC:9%
+                                                                                                               .,.,·:- -.,,.-,----
+                                                                                                                                         110,118 (12%)
+                                                                                                                                                                            Low IMC: 6%
+
+                                                                                                               IJJ,,81-----==- --·       110,94 (8%)
+
+                                                                                                                                         118,118 (7%)
+
+124
+
+                                                                                                               · West Flow Configurations
+
+                                    10.7%                               6.0%                                   · Other Configurations
+
+                                   t                                    Typical East Flow ADR (118)
+
+                                                                ·              is higher than West Flow
+
+                                                                               ADR (108)
+
+118
+
+                                                                                                                                                        **DRAFT**
+
+                                                         4 .4%          2. 4 %                                 Key
+
+     Reduced departure rate is                                          4.2%                                   Arrivals IDepartures {percent of time in configuration)
+     more common in East Flow                                                                  118
+                                                                ·                                              - - - - - - - ~ Arrivals
+110                                                                                                                      Departures ~
+                                                                   108
+                                                                                                                   R ATES           Rates (AAR, ADR) called at least 5% of t ime
+                                                                 ADR                                                                when configuration used
+                                                                                                               90,90(90%)
+
+     3.0%                          5 .4%                                                                       WIND & WEATHER
+
+                               94                                                                                                   W ind speeds increase away from center
+                                                                                                                                    (3 knot increments)
+
+Other rates: 22.9%                                              EAST FLOW FACILITYREPORTED RATES                                   More common w inds are darker
+Rates for all hours regardless of                               I I I 132,118                                  Percent of t ime spent in VMC/MMC/IMC when configuration used
+                                                                        124,118  110,94             98,84
+
+configuration, minimum 2% of time (VMC)                                 (MMC)    (IMC)              (Low IMC)
+
+                                   All data for hours from 1 U ct LU14 - 3U Sept LUl/, / AM to 11 l'M. 1:xcludes variable winds and missing o r incomplete data. U nly sho w s rates called at least L% of all ho urs.
+HISTORICAL USAGE - WEST FLOW                                                                                Configuration Usage
+
+                         Called Rates
+
+          132,108 is most                                                                                   · 26R,27L,28 I26L,27R (59%)
+
+132       commonly used                                                                                                                                            WIND&
+                                                                                                                                                                  WEATHER
+          rate in West Flow                                                                                          \ <",.;::,"--._                   RATES
+                                                                                                                                                 132,108 (50%)   VMC: 87%
+                                      29.5%                          11.5%                       - ... ...                - . >/ . - · :- .      124,108 (18%)
+                                     ·                               6.0%                                              B                         110,108 (9%)   1
+                                                                                                                   C                             118,108 (7%)
+                                                                                                                                                                 MMC: 10%
+                                                                                                             -·Hl 11H-r·1#:F.7..                                   IMC:3%
+
+                                                                                                            «<                                                  Low IMC: 0%
+
+                                                                                                                                             3~
+
+                                                                                                                        It · -=
+
+                                                                                                                              a...i
+
+     124                              ·                                                                     D East Flow Configurations
+
+a::                                   10.7%                                                                 · Other Configurations
+
+~                                    t
+
+         Lower AARs are called at                              ·                                                                       **DRAFT**
+         times, but ADR is nearly                                                                           Key
+                                                                     2. 4%
+118                                                                                                         Arrivals IDepartures {percent of time in configuration)
+
+         always 108
+
+                                                        4 .4%
+
+110                                                            ·                                            - - - - - - - ~ Arrivals
+                                                                                                                      Departures ~
+      3.0%
+                                                                                                                R ATES  Rates (AAR, ADR) called at least 5% of t ime
+                                 94                                                                                     when configuration used
+                                                                                                            90,90(90%)
+
+                                     5 . 4%                          4.2%                                   WIND & WEATHER
+                                                                                            118
+                                                                108                                                     W ind speeds increase away from center
+                                                                                                                        (3 knot increments)
+                                                               ADR
+
+Other rates: 22.9%                                             WEST FLOWFACILITYREPORTED RATES                                  More common w inds are darker
+Rates for all hours regardless of                                                                           Percent of time spent in VMC/MMC/IMC w hen configuration used
+                                                               I I I 132,108
+                                                                     124,108  110,94             98,80
+
+configuration, minimum 2% of time L..__(_V_M_c_)_..i....__(_M_M_ c _) ---1_ _(_1M_c_)_---1...._(_Lo_w_1M_c_)__J .._ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ____.
+
+                                     All dat a for hours from 1 U ct LU14 - 3U Sept LUl/, / AM t o 11 l'M. 1:xcludes variable winds and missing o r inco mplete dat a. U nly sho w s rates called at least L% of all ho urs.
+
