@@ -5,8 +5,9 @@ const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } } };
 async function api(path, q = {}) {
-  const r = await fetch(`/api/${path}?${new URLSearchParams(q)}`), j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || r.statusText || `HTTP ${r.status}`);
+  const r = await fetch(`/api/${path}?${new URLSearchParams(q)}`).catch(() => { throw new Error("The Flowcast server did not respond. Check your connection, then try again."); });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `The server answered ${r.status}${r.statusText ? ` (${r.statusText})` : ""}. Try again in a moment.`);
   return j;
 }
 
@@ -38,20 +39,23 @@ const COMPASS = ["north", "north-east", "east", "south-east", "south", "south-we
 
 // ---------- state ----------
 const S = { view: "outlook", meta: null, icao: "KATL", t0: "", sens: "balanced", thr: 0.25, reveal: true, out: null, hist: null, ev: null,
-            st: null, expl: null, lead: 3, busy: false, sel: null, cam: "3d", open: new Set() };
+            st: null, expl: null, lead: 3, busy: false, sel: null, cam: "3d", open: new Set(),
+            err: null,    // forecast failure, shown under the ask bar: { when, msg }
+            fail: null }; // History or Accuracy failure: { view, msg }
+const THRS = [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5];
 let stage = null;
 
-const hhmm = s => s ? `${s.slice(11, 16)}Z` : "—";   // UTC, for the technical layer only
-const day = s => new Date(s).toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" });
+const hhmm = s => s ? `${s.slice(11, 16)} UTC` : "—";   // for the technical layer only
+const day = s => new Date(s).toLocaleDateString("en-US", { day: "numeric", month: "short", timeZone: "UTC" });
 const pct = p => p == null ? "—" : Math.round(p * 100);
 const n0 = v => v == null ? "—" : Math.round(v).toLocaleString("en-US");
 const airport = () => S.meta.airports.find(a => a.icao === S.icao);
 const city = (a = airport()) => CITY[a.iata] || a.iata;
 const zone = iata => S.meta.airports.find(a => a.iata === iata)?.tz || "UTC";
-// local airport time: "2 AM", "2:05 AM", "Sat 15 Mar"
+// local airport time: "2 AM", "2:05 AM", "Sat, Mar 15"
 const hr = (s, z = airport().tz) => new Date(s).toLocaleTimeString("en-US", { hour: "numeric", timeZone: z });
 const clock = (s, z = airport().tz) => s ? new Date(s).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: z }) : "—";
-const dayL = (s, z = airport().tz) => new Date(s).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: z });
+const dayL = (s, z = airport().tz) => new Date(s).toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short", timeZone: z });
 const later = (s, h) => new Date(Date.parse(s) + h * 3600e3).toISOString();
 const riskTone = p => p >= S.thr ? "stop" : p >= 0.2 ? "warn" : "mute";
 const flightName = f => `${esc(AIRLINES[f.carrier] || f.carrier)} ${f.dir === "arr" ? "from" : "to"} <span class="mono">${esc(f.other)}</span>`;
@@ -68,17 +72,32 @@ function readUrl() {
   const q = new URLSearchParams(location.search), h = location.hash.replace(/^#\/?/, "").replace("storms", "eval");
   if (VIEWS.some(v => v[0] === h)) S.view = h;
   if (q.get("airport") && S.meta.airports.some(a => a.icao === q.get("airport"))) S.icao = q.get("airport");
-  S.t0 = q.get("t0") ? `${q.get("t0").slice(0, 13)}:00Z` : S.meta.default.t0;
+  const t = q.get("t0")?.slice(0, 13);   // strict: Date.parse happily reads "garbage" as the year 2000
+  S.t0 = /^\d{4}-\d\d-\d\dT\d\d$/.test(t) ? `${t}:00Z` : S.meta.default.t0;
+  if (q.get("sens") === "cautious") S.sens = "cautious";
+  if (THRS.includes(+q.get("thr"))) S.thr = +q.get("thr");
 }
-function writeUrl() { history.replaceState(null, "", `?airport=${S.icao}&t0=${S.t0.slice(0, 13)}#/${S.view}`); }
+// settings ride along only when changed, so a shared link shows the same answer
+function writeUrl() {
+  const extra = (S.sens === "cautious" ? "&sens=cautious" : "") + (S.thr !== 0.25 ? `&thr=${S.thr}` : "");
+  history.replaceState(null, "", `?airport=${S.icao}&t0=${S.t0.slice(0, 13)}${extra}#/${S.view}`);
+}
 
 // ---------- data ----------
+let seq = 0;   // newest request wins, so a slow answer never overwrites a newer one
 async function forecast() {
-  S.busy = true; paintAskButton();
+  const id = ++seq; S.busy = true; paintAskButton();
   try {
-    S.out = await api("outlook", { airport: S.icao, t0: S.t0, sens: S.sens, thr: S.thr });
+    const out = await api("outlook", { airport: S.icao, t0: S.t0, sens: S.sens, thr: S.thr });
+    if (id !== seq) return;
+    S.out = out; S.err = null; S.fail = null;
     S.t0 = S.out.t0; S.hist = null; S.ev = null; S.st = null; S.expl = null; S.sel = null; writeUrl(); syncStage(true);
-  } catch (e) { toast(e.message); }
+    const v = verdict(S.out); $("#live").textContent = `${city()}: ${v.title}. ${v.sub}`;
+  } catch (e) {
+    if (id !== seq) return;
+    S.err = { when: `${dayL(S.t0)}, ${clock(S.t0)} in ${city()}.`, msg: e.message };
+    if (S.out) { S.icao = S.out.icao; S.t0 = S.out.t0; }   // the inputs go back to the forecast still on screen
+  }
   S.busy = false; render();
 }
 function syncStage(scan) {
@@ -87,25 +106,27 @@ function syncStage(scan) {
   stage.setRing(S.out.hours.map(h => h.sev)); if (scan) stage.scan();
 }
 async function ensure(view) {
+  const icao = S.icao, t0 = S.t0, lead = S.lead, stale = () => icao !== S.icao || t0 !== S.t0 || lead !== S.lead;   // the user moved on meanwhile
   try {
-    if (view === "history" && !S.hist) { S.hist = await api("history", { airport: S.icao, t0: S.t0 }); render(); }
+    if (view === "history" && !S.hist) { const h = await api("history", { airport: icao, t0 }); if (!stale()) { S.hist = h; render(); } }
     if (view === "eval" && (!S.ev || S.ev.lead !== S.lead || S.ev.icao !== S.icao)) {
-      const q = { airport: S.icao, lead: S.lead };
+      const q = { airport: icao, lead };
       const [ev, st] = await Promise.all([api("eval", q), api("storm", q).catch(() => null)]);   // storm results are extra; Accuracy works without them
-      S.ev = { ...ev, icao: S.icao }; S.st = st; render();
+      if (!stale()) { S.ev = { ...ev, icao }; S.st = st; render(); }
     }
-  } catch (e) { toast(e.message); }
+  } catch (e) { if (!stale()) { S.fail = { view, msg: e.message }; render(); } }
 }
 function toast(msg) {
   const t = document.createElement("div"); t.className = "toast glass strong"; t.textContent = msg; document.body.append(t); setTimeout(() => t.remove(), 4200);
+  $("#alerts").textContent = msg;   // a live region that already exists, so screen readers announce it
 }
 
 // ---------- shell ----------
-function go(v) { S.view = v; writeUrl(); render(); ensure(v); }
+function go(v) { S.view = v; S.fail = null; writeUrl(); render(); ensure(v); }   // arriving retries, so an old error never shows over the new load
 function renderShell() {
   $("#rail").innerHTML = `<a class="rail-logo" href="#/outlook" data-go="outlook" aria-label="Flowcast, forecast">${LOGO}</a>`
     + VIEWS.map(([id, l, ic]) => `<button class="rail-btn" data-go="${id}" data-tab="${id}"${S.view === id ? ' aria-current="page"' : ""}>${ic}<span>${l}</span></button>`).join("")
-    + `<span class="rail-gap"></span><button class="rail-btn" data-tour-open aria-label="Show the guided tour">${I.help}<span>Help</span></button>`;
+    + `<span class="rail-gap"></span><button class="rail-btn" data-tour-open aria-label="Help: show the guided tour">${I.help}<span>Help</span></button>`;
   $("#topbar").innerHTML = `<span class="tb-item brand"><b>Flowcast</b></span>
     <span class="pill" title="Uses January to July 2025, which the models never saw while they were built">Replay of 2025 · not live</span>`;
   $("#stage").classList.toggle("dim", S.view !== "outlook"); stage?.setActive(S.view === "outlook");
@@ -115,8 +136,21 @@ function render() {
   const v = $("#view"), keep = v.firstElementChild?.dataset.view === S.view ? v.firstElementChild.scrollTop : 0;
   v.innerHTML = { outlook: outlookView, flights: flightsView, history: historyView, eval: evalView }[S.view]();
   if (v.firstElementChild) v.firstElementChild.scrollTop = keep;
+  chipCue();
 }
-const loading = (view, what) => `<div class="page scroll" data-view="${view}"><p class="empty-note">Loading ${what}…</p></div>`;
+// chip row: the arrow shows only while some chips are out of view, and at the end it points back to the start
+function chipCue(c = $(".chips")) {
+  if (!c) return;
+  c.classList.toggle("over", c.scrollWidth > c.clientWidth + 4);
+  c.classList.toggle("end", c.scrollLeft + c.clientWidth >= c.scrollWidth - 4);
+}
+// a page waiting on data: its header stays put, and a failure says so with a way to retry
+const loading = (view, what, head = "") => {
+  const msg = view === "flights" ? S.err?.msg : S.fail?.view === view && S.fail.msg;
+  return `<div class="page scroll" data-view="${view}"${msg ? "" : ' aria-busy="true"'}>${head}${msg
+    ? `<div class="empty-note" role="alert"><p>Could not load ${what}. ${esc(msg)}</p><button type="button" class="glass-btn" data-retry>Try again</button></div>`
+    : `<p class="empty-note">Loading ${what}…</p>`}</div>`;
+};
 
 // ---------- forecast: one answer over the 3D airfield, then what to do ----------
 function outlookView() {
@@ -131,21 +165,26 @@ function outlookView() {
         ${o ? `<span class="label">${clock(o.t0)} in ${city(a)}</span>` : ""}</span></div>
       <button class="glass-btn pri" type="submit"${S.busy ? " disabled" : ""}>${S.busy ? "Loading…" : "Show forecast"}</button>
     </form>`;
-  const chips = `<div class="chips" data-tour="chips"><span class="label chips-l">Replay a bad day</span>${m.events.map((e, i) => `<button class="chip glass" data-ev="${i}" title="Landings fell to ${n0(e.aar)} an hour. Starts the forecast 6 hours before."><span class="mono k">${e.iata}</span>${dayL(e.at, zone(e.iata))}</button>`).join("")}</div>`;
-  if (!o) return `<div class="outlook" data-view="outlook"><section class="console">${askbar}${chips}</section></div>`;
+  const err = S.err && `<p class="askerr glass strong" role="alert"><span class="dot stop"></span><span><b>${S.err.when}</b> ${esc(S.err.msg)}</span></p>`;
+  const chips = `<div class="chips" data-tour="chips"><span class="label chips-l">Replay a bad day</span>${m.events.map((e, i) => { const d = dayL(e.at, zone(e.iata));
+    return `<button class="chip glass" data-ev="${i}" aria-label="Replay ${e.iata}, ${d}: landings fell to ${n0(e.aar)} an hour" title="Landings fell to ${n0(e.aar)} an hour. Starts the forecast 6 hours before."><span class="mono k">${e.iata}</span>${d}<span class="mono v">${n0(e.aar)}/hr</span></button>`; }).join("")}
+    <button type="button" class="chips-more glass" data-chips-more tabindex="-1" aria-hidden="true" title="More bad days">${I.down}</button></div>`;
+  if (!o) return `<div class="outlook" data-view="outlook"><section class="console">${askbar}${err || chips}</section></div>`;
 
   const k = o.verdict.kind, v = verdict(o), low = o.hours.reduce((x, h) => (h.pred < x.pred ? h : x), o.hours[0]);
   const answer = `<section class="hud left glass strong answer" aria-labelledby="verdict" data-tour="answer" id="answer-top">
-      <div class="pillrow"><span class="pill ${k}"><span class="dot ${k}"></span>${SEV[k]}</span><span class="label">${city(a)} · ${dayL(o.t0)}, ${clock(o.t0)}</span></div>
+      <div class="pillrow"><span class="pill ${k}"><span class="dot ${k}"></span>${SEV[k]}</span><span class="label">${city(a)} · ${dayL(o.t0)}, ${clock(o.t0)}</span>
+        ${S.sens === "cautious" ? '<span class="pill" title="Warns when even the low end of the forecast range drops. Change it under Alert settings.">Cautious alerts</span>' : ""}</div>
       <h1 class="headline" id="verdict">${v.title}</h1><p class="lede">${v.sub}</p>
       <div class="label">Each bar is one hour, 3 to 12 hours ahead</div>
-      <div class="segs">${o.hours.map((h, i) => `<i class="${h.sev}" data-hour="${i}" title="${hr(h.hour)}: about ${n0(h.pred)} landings"></i>`).join("")}</div>
+      <div class="segs" role="group" aria-label="Forecast by hour">${o.hours.map((h, i) => `<button type="button" class="${h.sev}" data-hour="${i}" tabindex="${i ? -1 : 0}" title="${hr(h.hour)}: about ${n0(h.pred)} landings"
+        aria-label="${hr(h.hour)}: about ${n0(h.pred)} landings an hour, ${SEV[h.sev].toLowerCase()}"></button>`).join("")}</div>
       <div class="ticks label"><span>${hr(o.hours[0].hour)}</span><span>${hr(o.hours.at(-1).hour)}</span></div>
       <div class="legend label">${Object.entries(SEV).map(([s, l]) => `<span><i class="box ${s}"></i>${l}</span>`).join("")}</div>
       <div class="readouts">
         <div><div class="readout">${n0(low.pred)}<small>/hr</small></div><div class="label">Fewest landings in one hour (up to ${o.aar_vfr} in good weather)</div></div>
-        <div><div class="readout">${o.n_high}<small>of ${o.n_flights}</small></div><div class="label">Flights at risk of a 45+ min delay</div></div>
-      </div></section>`;
+        <div><div class="readout">${o.n_high}<small>of ${o.n_flights}</small></div><div class="label">Sampled flights with a ${pct(S.thr)}%+ chance of a 45+ min delay</div></div>
+      </div>${truth(o)}</section>`;
   const w = o.now;
   const weather = `<aside class="hud right glass" aria-label="Weather now" data-tour="weather">
       <div class="ph">${I.wind}Weather now<span class="meta">${w ? `as of ${clock(w.hour)}` : ""}</span></div>
@@ -154,7 +193,7 @@ function outlookView() {
   const tag = `<div class="hud bl"><div class="readout">${a.iata}</div><div class="label">${esc(a.name)}</div><div class="label attrib">Airport map © OpenStreetMap contributors</div></div>`;
   const next = `<button type="button" class="hud bc glass-btn" data-scroll="answer">What to do, and the details${I.down}</button>`;
   const cam = `<div class="hud br seg glass" role="group" aria-label="3D view">${[["3d", "3D"], ["top", "Top"], ["side", "Side"]].map(([c, l]) => `<button type="button" data-cam="${c}" aria-pressed="${S.cam === c}">${l}</button>`).join("")}</div>`;
-  return `<div class="outlook" data-view="outlook"><section class="console">${tag}${answer}${askbar}${chips}${weather}${next}${cam}</section>${advisory(o)}</div>`;
+  return `<div class="outlook" data-view="outlook"><section class="console">${tag}${answer}${askbar}${err || chips}${weather}${next}${cam}</section>${advisory(o)}</div>`;
 }
 
 function verdict(o) {
@@ -163,12 +202,27 @@ function verdict(o) {
   const span = `${hr(w.start)} to ${hr(w.end)}`, why = w.codes?.length ? ` Likely cause: ${w.codes.map(c => HAZ[c]).join(" and ")}.` : "";
   if (w.pct < 20)   // cautious setting: the central forecast is fine, only the low end of the range dips
     return { title: `Possible slowdown from ${span}`, sub: `Probably fine, but the low end of the forecast dips to ${w.lo} landings an hour. Treat it as a heads-up.${why}` };
+  // cautious judges severity on the low end, so say the low end; otherwise "Big slowdown" sits over a mild central number
+  const low = o.sens === "cautious" ? `, and it could fall to ${w.lo}` : "";
   return { title: `${w.severity === "severe" ? "Big slowdown" : "Fewer arrivals"} from ${span}`,
-           sub: `About ${w.min_aar} planes an hour can land, down from ${o.aar_vfr} in good weather (${w.pct}% fewer).${why}` };
+           sub: `About ${w.min_aar} planes an hour can land${low}, down from ${o.aar_vfr} in good weather (${w.pct}% fewer).${why}` };
+}
+
+// replay only: set the forecast against what the airport really managed, misses included
+function truth(o) {
+  const v = o.aar_vfr, hs = o.hours.filter(h => h.actual != null);
+  if (!S.reveal || !hs.length) return "";
+  const w = hs.reduce((x, h) => (h.actual < x.actual ? h : x)), cut = w.actual <= 0.8 * v, warned = o.windows.length > 0;
+  const tafCut = hs.some(h => h.taf != null && h.taf <= 0.8 * v);
+  const said = cut ? `landings fell to ${n0(w.actual)} an hour at ${hr(w.hour)}` : `landings stayed near normal, at least ${n0(w.actual)} an hour`;
+  const call = cut ? (warned ? "Flowcast warned of it." : `Flowcast missed this slowdown${tafCut ? ", but the weather-forecast rule flagged one" : ""}.`)
+    : (warned ? "This warning did not come true." : "As forecast.");
+  const tone = cut && !warned ? "stop" : warned && !cut ? "warn" : "ok";
+  return `<p class="truth"><span class="dot ${tone}"></span><span><b>What really happened:</b> ${said}. ${call}</span></p>`;
 }
 
 function weatherBody(w) {
-  const CAT = { VFR: ["Good flying weather", "ok"], MVFR: ["Slightly reduced visibility", "warn"], IFR: ["Low cloud or poor visibility", "stop"], LIFR: ["Very low cloud or fog", "stop"] };
+  const CAT = { VFR: ["Good flying weather", "clear"], MVFR: ["Slightly reduced visibility", "warn"], IFR: ["Low cloud or poor visibility", "stop"], LIFR: ["Very low cloud or fog", "stop"] };
   const [say, tone] = CAT[w.category] || ["Conditions not reported", "mute"];
   const x = Math.abs(w.crosswind_kt ?? 0), c = w.ceiling_ft, v = w.vis_mi;
   const wind = w.wind_kt == null ? "—" : w.wind_kt < 1 ? "Calm" : `${w.wind_kt}${w.gust_kt ? `–${w.gust_kt}` : ""}<small>knots</small>`;
@@ -197,14 +251,14 @@ function advisory(o) {
   const explain = !S.meta.explain ? "" : S.expl
     ? `<div class="ai"><p>${esc(S.expl)}</p><p class="label">Summary by Claude, written only from the numbers on this page. It explains; it does not forecast or decide.</p></div>`
     : `<button type="button" class="glass-btn" data-explain${S.busy ? " disabled" : ""}>Explain this forecast in plain English</button>`;
-  const hourly = `<div class="tablewrap"><table class="evtab"><thead><tr><th>Time</th><th>Forecast</th><th>Likely range</th><th>Weather-forecast rule</th>${S.reveal ? "<th>Really</th>" : ""}</tr></thead><tbody>
+  const hourly = `<div class="tablewrap"><table class="evtab"><thead><tr><th>Time</th><th>Forecast</th><th>Likely range</th><th>Weather-forecast rule</th>${S.reveal ? "<th>What happened</th>" : ""}</tr></thead><tbody>
       ${o.hours.map(h => `<tr><td class="mono">${hr(h.hour)}</td><td class="mono t-${h.sev === "clear" ? "" : h.sev}">${n0(h.pred)}</td><td class="mono">${n0(h.lo)}–${n0(h.hi)}</td><td class="mono">${n0(h.taf)}</td>${S.reveal ? `<td class="mono">${n0(h.actual)}</td>` : ""}</tr>`).join("")}</tbody></table></div>
     <p class="label">Landings per hour. The likely range holds the real value about 8 times in 10. The weather-forecast rule turns the official airport forecast (TAF) straight into a landing rate: it is the simple method Flowcast has to beat.</p>`;
   const settings = `<div class="set"><span>Alert sensitivity</span><span class="seg" role="group" aria-label="Alert sensitivity">${[["balanced", "Balanced"], ["cautious", "Cautious"]].map(([s, l]) => `<button type="button" data-sens="${s}" aria-pressed="${S.sens === s}">${l}</button>`).join("")}</span></div>
     <p class="label">Balanced warns when the forecast drops 20% or more below good-weather capacity. Cautious also warns when only the low end of the range drops: earlier warnings, but in 2025 testing about half of them did not come true.</p>
-    <div class="set"><label for="thr">Flag a flight when its chance of a 45+ min delay is at least</label><select id="thr" class="seg mono" data-thr>${[0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5].map(t => `<option value="${t}"${t === S.thr ? " selected" : ""}>${pct(t)}%</option>`).join("")}</select></div>`;
+    <div class="set"><label for="thr">Flag a flight when its chance of a 45+ min delay is at least</label><select id="thr" class="seg mono" data-thr>${THRS.map(t => `<option value="${t}"${t === S.thr ? " selected" : ""}>${pct(t)}%</option>`).join("")}</select></div>`;
   const trace = `<ol class="trace">
-      <li>Weather: the latest airport weather report (METAR) published before ${hhmm(o.t0)} UTC, used only if under 2 hours old, and the official forecast (TAF) only if issued before then and valid for the hour.</li>
+      <li>Weather: the latest airport weather report (METAR) published before ${hhmm(o.t0)}, used only if under 2 hours old, and the official forecast (TAF) only if issued before then and valid for the hour.</li>
       <li>Landings: a LightGBM model forecasts the arrival acceptance rate (AAR) as a share of the ${o.aar_vfr}/hr good-weather rate, 3 to 12 hours ahead. Quantile models give the 80% likely range.</li>
       <li>Alerts: an hour is reduced at 80% of the good-weather rate or less, and severe at 60% or less, judged on the ${S.sens === "balanced" ? "central forecast" : "low end of the range"}.</li>
       <li>Delay risk: a calibrated logistic regression for each lead time. The reasons are the inputs that push a flight's risk above the average flight's.</li>
@@ -214,7 +268,7 @@ function advisory(o) {
   const flights = shown.length ? shown.map(f => { const r = reasons(f); return `<button class="src${S.sel === f.id ? " cur" : ""}" data-flight="${f.id}">
       <span class="src-h"><b class="readout t-${riskTone(f.p)}">${pct(f.p)}<small>%</small></b><span class="src-n"><span>${flightName(f)}</span><span class="label">${f.dir === "arr" ? "Lands" : "Leaves"} ${clock(f.t)}</span></span></span>
       <span class="src-p">${r.length ? `Why: ${esc(r.slice(0, 2).join(", "))}` : "Nothing unusual: close to an average flight."}</span>
-      ${S.reveal ? `<span class="label">Really: ${outcome(f)}</span>` : ""}</button>`; }).join("")
+      ${S.reveal ? `<span class="label">What happened: ${outcome(f)}</span>` : ""}</button>`; }).join("")
     : '<p class="empty-note">No sampled flights are scheduled 3 to 12 hours after this time.</p>';
   return `<section class="results" id="answer"><div class="answer-grid">
     <article class="glass strong card" data-tour="advice">
@@ -222,7 +276,7 @@ function advisory(o) {
       ${act}
       <p class="label note">Flowcast suggests; a qualified person decides. Always check the latest weather reports before acting.</p>
       ${explain}
-      <div class="ph sec">${I.history}Landings per hour<span class="meta"><button type="button" class="glass-btn sm" data-reveal aria-pressed="${S.reveal}">Show what really happened</button></span></div>
+      <div class="ph sec">${I.history}Landings per hour<span class="meta"><button type="button" class="glass-btn sm" data-reveal aria-pressed="${S.reveal}">${S.reveal ? "Hide" : "Show"} what really happened</button></span></div>
       ${aarChart(o)}
       ${more("hours", "Hour by hour", hourly)}${more("settings", "Alert settings", settings)}${more("how", "How this forecast was made", trace)}
     </article>
@@ -246,16 +300,17 @@ function aarChart(o) {
   const band = o.hours.map(h => [h.hour, h.hi]).concat(o.hours.slice().reverse().map(h => [h.hour, h.lo]));
   const grid = []; for (let v = yMin; v <= yMax; v += 20) grid.push(`<line class="grid" x1="${P.l}" x2="${W - P.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${P.l - 6}" y="${Y(v) + 4}" text-anchor="end">${v}</text>`);
   const ticks = []; for (let k = -24; k <= 12; k += sm ? 12 : 6) ticks.push(`<text x="${X(later(o.t0, k))}" y="${Hh - 6}" text-anchor="middle">${k === 0 ? "now" : hr(later(o.t0, k))}</text>`);
-  const thr = [[0.8, "var(--ring-moderate)", "Reduced"], [0.6, "var(--stop)", "Severe"]].map(([f, c, l]) => `<line x1="${P.l}" x2="${W - P.r}" y1="${Y(f * o.aar_vfr)}" y2="${Y(f * o.aar_vfr)}" stroke="${c}" stroke-dasharray="4 4" opacity=".8"/><text x="${P.l + 4}" y="${Y(f * o.aar_vfr) - 4}" style="fill:${c}">${l}</text>`);
+  // the bright ring colour draws the line; the text takes the darker amber that passes contrast
+  const thr = [[0.8, "var(--ring-moderate)", "var(--amber)", "Reduced"], [0.6, "var(--stop)", "var(--stop)", "Severe"]].map(([f, c, ink, l]) => `<line x1="${P.l}" x2="${W - P.r}" y1="${Y(f * o.aar_vfr)}" y2="${Y(f * o.aar_vfr)}" stroke="${c}" stroke-dasharray="4 4" opacity=".8"/><text x="${P.l + 4}" y="${Y(f * o.aar_vfr) - 4}" style="fill:${ink}">${l}</text>`);
   const dots = o.hours.map(h => `<circle cx="${X(h.hour)}" cy="${Y(h.pred)}" r="3.4" fill="#fff" stroke="var(--sky)" stroke-width="2"><title>${hr(h.hour)} · forecast ${h.pred} (likely ${h.lo}–${h.hi})${S.reveal ? ` · really ${h.actual}` : ""}</title></circle>`).join("");
   const legend = [["var(--ink-3)", "Past 24 hours"], ["var(--sky)", "Forecast"], ["rgba(0,133,202,.25)", "Likely range", true]]
-    .concat(S.reveal ? [["var(--stop)", "What really happened"]] : []).map(([c, l, box]) => `<span><i class="${box ? "box" : ""}" style="background:${c}"></i>${l}</span>`).join("");
+    .concat(S.reveal ? [["var(--ink)", "What really happened"]] : []).map(([c, l, box]) => `<span><i class="${box ? "box" : ""}" style="background:${c}"></i>${l}</span>`).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Planes landing per hour: the last 24 hours and the forecast for the next 12">
       ${grid.join("")}${thr.join("")}
       <line x1="${X(o.t0)}" x2="${X(o.t0)}" y1="${P.t}" y2="${Hh - P.b}" stroke="var(--navy)" stroke-dasharray="2 3" opacity=".5"/>
       <path d="${path(band)}Z" fill="rgba(0,133,202,.14)"/>
       <path d="${path(o.hist.map(h => [h.hour, h.aar]))}" fill="none" stroke="var(--ink-3)" stroke-width="2"/>
-      ${S.reveal ? `<path d="${path(o.hours.map(h => [h.hour, h.actual]))}" fill="none" stroke="var(--stop)" stroke-width="2"/>` : ""}
+      ${S.reveal ? `<path d="${path(o.hours.map(h => [h.hour, h.actual]))}" fill="none" stroke="var(--ink)" stroke-width="2"/>` : ""}
       <path d="${path(o.hours.map(h => [h.hour, h.pred]))}" fill="none" stroke="var(--sky)" stroke-width="2.6"/>
       ${dots}${ticks.join("")}
     </svg><div class="legend label">${legend}</div>`;
@@ -264,31 +319,24 @@ function aarChart(o) {
 // ---------- flights ----------
 function flightsView() {
   const o = S.out; if (!o) return loading("flights", "flights");
-  const a = airport(), t0 = Date.parse(o.t0), base = S.meta.base_rate;
+  const a = airport(), base = S.meta.base_rate;
   const mean = o.flights.length ? o.flights.reduce((s, f) => s + f.p, 0) / o.flights.length : 0;
-  const hours = Array.from({ length: 10 }, (_, i) => { const lo = t0 + (i + 3) * 3600e3, fs = o.flights.filter(f => { const t = Date.parse(f.t); return t >= lo - 1800e3 && t < lo + 1800e3; });
-    return { t: new Date(lo).toISOString(), n: fs.length, m: fs.length ? fs.reduce((s, f) => s + f.p, 0) / fs.length : 0 }; });
-  const top = Math.max(0.3, ...hours.map(h => h.m));
   const drv = {}; o.flights.forEach(f => reasons(f).forEach(n => { drv[n] = (drv[n] || 0) + 1; }));
   const drivers = Object.entries(drv).sort((x, y) => y[1] - x[1]).slice(0, 8), dTop = Math.max(1, ...drivers.map(d => d[1]));
   return `<div class="page scroll" data-view="flights">
     <header class="page-h"><div><h1>Flights</h1><p class="lede">A sample of real ${city(a)} flights scheduled 3 to 12 hours after ${clock(o.t0)} on ${dayL(o.t0)}. Each percentage is the chance of a delay of 45 minutes or more.</p></div>
-      <div class="page-stats"><div><div class="readout">${o.n_flights}</div><div class="label">Flights checked</div></div>
+      <div class="page-stats"><div><div class="readout">${o.n_flights}</div><div class="label">Sampled flights</div></div>
         <div><div class="readout">${o.n_high}</div><div class="label">At risk (${pct(S.thr)}%+ chance)</div></div>
         <div><div class="readout">${pct(mean)}<small>%</small></div><div class="label">Average chance, usually ${pct(base)}%</div></div></div></header>
-    <div class="ins-grid">
-      <section class="glass card"><div class="ph">Chance of a long delay, by hour</div>
-        <div class="land" style="grid-template-columns:repeat(10,1fr)">${hours.map(h => `<div class="land-cell" title="${hr(h.t)} · ${h.n} flights · average chance ${pct(h.m)}%"><span class="n mono">${h.n || ""}</span><span class="bar ${h.m >= S.thr ? "severe" : ""}" style="height:${(h.m / top * 100).toFixed(0)}%"></span></div>`).join("")}
-          ${hours.map(h => `<span class="label land-y mono">${hr(h.t).replace(" ", "").toLowerCase()}</span>`).join("")}</div>
-        <div class="legend label"><span>Numbers above the bars count the flights in that hour. Red bars average ${pct(S.thr)}% or more.</span></div></section>
-      <section class="glass card"><div class="ph">Most common reasons<span class="meta">flights listing it</span></div>
-        <div class="m-bars">${drivers.length ? drivers.map(([n, c]) => `<div><span class="label">${esc(n)}</span><span class="mb"><i class="accent" style="width:${(c / dTop * 100).toFixed(0)}%"></i></span><span class="mono">${c}</span></div>`).join("") : '<p class="empty-note">No flights in this window.</p>'}</div></section>
-      <section class="glass card span2"><div class="ph">Every flight<span class="meta">highest chance first</span></div>
-        <div class="scroll tablewrap" style="max-height:480px"><table class="evtab stack"><thead><tr><th>Time</th><th>Flight</th><th>Chance</th><th>Main reasons</th>${S.reveal ? "<th>What happened</th>" : ""}</tr></thead><tbody>
+    <div class="ins-grid flights-grid">
+      <section class="glass card"><div class="ph">Every flight<span class="meta">highest chance first</span></div>
+        <div class="scroll tablewrap flight-list"><table class="evtab stack"><thead><tr><th>Time</th><th>Flight</th><th>Chance</th><th>Main reasons</th>${S.reveal ? "<th>What happened</th>" : ""}</tr></thead><tbody>
         ${o.flights.map(f => `<tr${S.sel === f.id ? ' class="cur"' : ""}><td class="mono">${clock(f.t)}</td><td>${flightName(f)}</td>
           <td class="mono"><span class="mb"><i class="${f.p >= S.thr ? "bad" : f.p >= 0.2 ? "accent" : ""}" style="width:${Math.min(100, f.p * 200).toFixed(0)}%"></i></span>${pct(f.p)}%</td>
           <td>${esc(reasons(f).join(", ")) || "—"}</td>${S.reveal ? `<td class="mono">${outcome(f)}</td>` : ""}</tr>`).join("")}
         </tbody></table></div></section>
+      <section class="glass card"><div class="ph">Most common reasons<span class="meta">flights listing it</span></div>
+        <div class="m-bars">${drivers.length ? drivers.map(([n, c]) => `<div><span class="label">${esc(n)}</span><span class="mb"><i class="accent" style="width:${(c / dTop * 100).toFixed(0)}%"></i></span><span class="mono">${c}</span></div>`).join("") : '<p class="empty-note">No flights in this window.</p>'}</div></section>
     </div></div>`;
 }
 
@@ -299,6 +347,9 @@ function historyView() {
   const obs = h.delay.length ? h.delay.reduce((s, d) => s + d.obs * d.n, 0) / Math.max(1, h.delay.reduce((s, d) => s + d.n, 0)) : null;
   const top = Math.max(6, ...h.daily.map(d => d.low)), hm = Math.max(0.05, ...h.heat.flat().filter(v => v != null));
   const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  // the grids are pictures to screen readers (their numbers live in hover titles), so each gets a one-line summary
+  const worst = h.daily.reduce((x, d) => (d.low > x.low ? d : x), h.daily[0] || { low: 0 });
+  const hot = h.heat.flatMap((row, d) => row.map((v, hh) => [v, d, hh])).filter(x => x[0]).sort((x, y) => y[0] - x[0]).slice(0, 3);
   return `<div class="page scroll" data-view="history">
     <header class="page-h"><div><h1>Past 30 days</h1><p class="lede">${CITY[h.iata] || h.iata} in the 30 days before ${dayL(h.t0)}, and the times of day when landings are usually cut, across January to July 2025.</p></div>
       <div class="page-stats"><div><div class="readout">${low}</div><div class="label">Hours with fewer landings</div></div>
@@ -306,35 +357,36 @@ function historyView() {
         <div><div class="readout">${obs == null ? "—" : pct(obs)}<small>%</small></div><div class="label">Flights 45+ min late</div></div></div></header>
     <div class="ins-grid">
       <section class="glass card"><div class="ph">Hours with fewer landings, each day</div>
-        <div class="land" style="grid-template-columns:repeat(${h.daily.length},1fr)">${h.daily.map(d => `<div class="land-cell" title="${day(d.day)} · ${d.low} hours with 20%+ fewer landings"><span class="bar ${d.low >= 8 ? "severe" : d.low ? "moderate" : ""}" style="height:${(d.low / top * 100).toFixed(0)}%"></span></div>`).join("")}
-          ${h.daily.map((d, i) => `<span class="label land-y mono">${i % 5 ? "" : day(d.day).slice(0, 2)}</span>`).join("")}</div>
+        <div class="land" style="grid-template-columns:repeat(${h.daily.length},minmax(0,1fr))" role="img" aria-label="${low} hours with 20%+ fewer landings${worst.low ? `. Worst day: ${day(worst.day)}, ${worst.low} hours` : ""}">${h.daily.map(d => `<div class="land-cell" title="${day(d.day)} · ${d.low} hours with 20%+ fewer landings"><span class="bar ${d.low >= 8 ? "severe" : d.low ? "moderate" : ""}" style="height:${(d.low / top * 100).toFixed(0)}%"></span></div>`).join("")}
+          ${h.daily.map((d, i) => `<span class="label land-y mono">${i % 7 ? "" : day(d.day)}</span>`).join("")}</div>
         <div class="legend label"><span><i class="box moderate"></i>Some hours</span><span><i class="box severe"></i>8 hours or more</span></div></section>
       <section class="glass card"><div class="ph">Flights 45+ min late, each day</div>${delayChart(h.delay)}</section>
       <section class="glass card span2"><div class="ph">When are landings usually cut?<span class="meta">local time · Jan to Jul 2025</span></div>
-        <div class="heatgrid"><span></span>${Array.from({ length: 24 }, (_, i) => `<span class="label mono land-y">${i % 3 ? "" : String(i).padStart(2, "0")}</span>`).join("")}
-          ${h.heat.map((row, d) => `<span class="label">${DOW[d]}</span>${row.map((v, hh) => `<i title="${DOW[d]} ${String(hh).padStart(2, "0")}:00 · ${v == null ? "no data" : `${pct(v)}% of these hours had 20%+ fewer landings`}" style="background:rgba(0,133,202,${v == null ? 0.03 : (0.05 + 0.85 * v / hm).toFixed(2)})"></i>`).join("")}`).join("")}
+        <div class="heatgrid" role="img" aria-label="${hot.length ? `Share of hours with 20%+ fewer landings, highest: ${hot.map(([v, d, hh]) => `${DOW[d]} ${String(hh).padStart(2, "0")}:00, ${pct(v)}%`).join("; ")}` : "No cuts on record"}"><span></span>${Array.from({ length: 24 }, (_, i) => `<span class="label mono land-y">${i % 3 ? "" : String(i).padStart(2, "0")}</span>`).join("")}
+          ${h.heat.map((row, d) => `<span class="label">${DOW[d]}</span>${row.map((v, hh) => `<i title="${DOW[d]} ${String(hh).padStart(2, "0")}:00 · ${v == null ? "no data" : `${pct(v)}% of these hours had 20%+ fewer landings`}" ${v == null ? "" : ` style="--v:${(v / hm).toFixed(2)}"`}></i>`).join("")}`).join("")}
         </div>
-        <div class="legend label"><span>Darker squares: landings are cut more often at that day and hour.</span></div></section>
+        <div class="legend label"><span>Rarely cut<i class="ramp"></i>Often cut</span></div></section>
     </div></div>`;
 }
 function delayChart(rows) {
   if (!rows.length) return '<p class="empty-note">No sampled flights in this period.</p>';
-  const W = 560, Hh = 220, P = { l: 34, r: 10, t: 10, b: 22 }, n = rows.length;
+  const W = innerWidth < 600 ? 340 : 560, Hh = 220, P = { l: 34, r: 10, t: 10, b: 22 }, n = rows.length;   // narrow viewBox on phones keeps axis text near 11px
   const yMax = Math.max(0.3, ...rows.map(r => Math.max(r.obs, r.pred))), X = i => P.l + i / Math.max(1, n - 1) * (W - P.l - P.r), Y = v => P.t + (1 - v / yMax) * (Hh - P.t - P.b);
   const path = k => rows.map((r, i) => `${i ? "L" : "M"}${X(i).toFixed(1)} ${Y(r[k]).toFixed(1)}`).join("");
   const grid = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6].filter(v => v <= yMax).map(v => `<line class="grid" x1="${P.l}" x2="${W - P.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${P.l - 6}" y="${Y(v) + 4}" text-anchor="end">${pct(v)}%</text>`).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Share of flights 45 or more minutes late each day, real and predicted">${grid}
-      <path d="${path("obs")}" fill="none" stroke="var(--stop)" stroke-width="1.8"/>${rows.map((r, i) => `<circle cx="${X(i)}" cy="${Y(r.obs)}" r="2.6" fill="var(--stop)"><title>${day(r.day)} · ${pct(r.obs)}% of ${r.n} flights</title></circle>`).join("")}
+      <path d="${path("obs")}" fill="none" stroke="var(--ink)" stroke-width="1.8"/>${rows.map((r, i) => `<circle cx="${X(i)}" cy="${Y(r.obs)}" r="2.6" fill="var(--ink)"><title>${day(r.day)} · ${pct(r.obs)}% of ${r.n} flights</title></circle>`).join("")}
       <path d="${path("pred")}" fill="none" stroke="var(--sky)" stroke-width="2.6"/>
       ${rows.map((r, i) => i % 7 ? "" : `<text x="${X(i)}" y="${Hh - 5}" text-anchor="middle">${day(r.day)}</text>`).join("")}
-    </svg><div class="legend label"><span><i style="background:var(--stop)"></i>Real share</span><span><i style="background:var(--sky)"></i>Flowcast's prediction, 3 hours ahead</span></div>`;
+    </svg><div class="legend label"><span><i style="background:var(--ink)"></i>Real share</span><span><i style="background:var(--sky)"></i>Flowcast's prediction, 3 hours ahead</span></div>`;
 }
 
 // ---------- accuracy: plain answers first, the full evaluation (incl. storm hours) behind "details" ----------
 function evalView() {
   const e = S.ev, s = S.st, a = airport();
   const leads = `<div class="lead-pick"><span class="label">Forecast made</span><span class="seg" role="group" aria-label="Hours ahead">${[3, 6, 9, 12].map(l => `<button type="button" data-lead="${l}" aria-pressed="${S.lead === l}">${l} h</button>`).join("")}</span><span class="label">ahead</span></div>`;
-  if (!e) return loading("eval", "accuracy results");
+  const head = `<header class="page-h"><div><h1>Accuracy</h1><p class="lede">How Flowcast did on January to July 2025, data the models never saw while they were built. Each result is compared with simpler ways of forecasting.</p></div>${leads}</header>`;
+  if (!e) return loading("eval", "accuracy results", head);
   const ours = e.aar[0], d = e.delay, st = s?.arr;
   const NAME = { lightgbm: "Flowcast", taf_implied: "Weather-forecast rule", persistence: "No change", climatology: "Typical for the hour" };
   const cmp = k => e.aar.map(r => [NAME[r.model] || r.label, r[k], r.model === "lightgbm" ? "good" : ""]);
@@ -344,10 +396,10 @@ function evalView() {
     "The flight data is a sample of about 3% of traffic, and airline data covers reporting carriers only.",
     ...(s ? [`Storms are rare: ${s.hours} storm hours at ${s.iata} in the test period, so storm results are less certain.`,
              "In storms, its delay chances run well below what really happens. Treat any rise as significant."] : [])];
-  const fails = e.failures.slice(0, 4).map(f => `<div class="fail"><p class="q">${esc(AIRLINES[f.carrier] || f.carrier)} ${f.dir === "arr" ? "from" : "to"} <span class="mono">${esc(f.other)}</span> at ${esc(f.hub)}</p>
-      <p class="label">${dayL(f.t, zone(f.hub))}</p><p>${f.kind === "missed" ? `${n0(f.delay_min)} min late, but Flowcast gave it only ${pct(f.p)}%.` : `Flagged at ${pct(f.p)}%, but only ${n0(f.delay_min)} min late.`}</p></div>`).join("");
-  return `<div class="page scroll" data-view="eval">
-    <header class="page-h"><div><h1>Accuracy</h1><p class="lede">How Flowcast did on January to July 2025, data the models never saw while they were built. Each result is compared with simpler ways of forecasting.</p></div>${leads}</header>
+  // failure cases exist only at the two tuning leads; show two of each kind for this airport
+  const fl = e.failures || [], fails = [...fl.filter(f => f.kind === "missed").slice(0, 2), ...fl.filter(f => f.kind !== "missed").slice(0, 2)].map(f => `<div class="fail"><p class="q">${esc(AIRLINES[f.carrier] || f.carrier)} ${f.dir === "arr" ? "from" : "to"} <span class="mono">${esc(f.other)}</span> at ${esc(f.hub)}</p>
+      <p class="label">${dayL(f.t, zone(f.hub))}</p><p>${f.kind === "missed" ? `${n0(f.delay_min)} min late, but Flowcast gave it only ${pct(f.p)}%.` : `Flagged at ${pct(f.p)}%, but ${f.delay_min <= 0 ? "it was on time" : `only ${n0(f.delay_min)} min late`}.`}</p></div>`).join("");
+  return `<div class="page scroll" data-view="eval">${head}
     <div class="metrics">
       ${metric("How far off is the landings forecast?", ours.rmse.toFixed(1), "/hr", bars(cmp("rmse"), 1), "The typical miss, in landings per hour. Shorter bars are better.")}
       ${metric("Does it see slowdowns coming?", ours.pr_auc.toFixed(2), "of 1", bars(cmp("pr_auc"), 2), `A 0-to-1 score for flagging hours with 20%+ fewer landings. Guessing scores ${e.event_rate.toFixed(2)}.`)}
@@ -357,9 +409,10 @@ function evalView() {
     <div class="ins-grid">
       ${st ? `<section class="glass card storm"><div class="ph">${I.storm}In storms, trust it less</div>
         <div class="readout t-stop">${(st.model / st.all_hours).toFixed(1)}<small>× bigger misses</small></div>
-        <p>In ${s.hours} storm hours at ${s.iata}, the forecast missed by about ${st.model.toFixed(0)} landings an hour, against ${st.all_hours.toFixed(0)} normally. Its likely range held the real number only ${pct(st.cover)}% of the time, against the 90% promised. Read a storm-hour forecast as an early warning, not an exact count.</p></section>` : ""}
+        <p>In ${s.hours} storm hours at ${s.iata}, arrivals forecasts missed by about ${st.model.toFixed(0)} an hour, against ${st.all_hours.toFixed(0)} in normal hours. Their 90% range held the real number only ${pct(st.cover)}% of the time. Read a storm-hour forecast as an early warning, not an exact count.</p>
+        <p class="label">From a separate storm check that scores real arrivals with its own 90% range, so these numbers do not compare directly with the cards above.</p></section>` : ""}
       <section class="glass card${st ? "" : " span2"}"><div class="ph">Where it goes wrong</div><ul class="limits">${limits.map(l => `<li>${l}</li>`).join("")}</ul></section>
-      <section class="glass card span2"><div class="ph">Biggest misses<span class="meta">the model's worst calls, shown on purpose</span></div><div class="fails">${fails}</div></section>
+      <section class="glass card span2"><div class="ph">Biggest misses<span class="meta">the model's worst calls, shown on purpose</span></div>${fails ? `<div class="fails">${fails}</div>` : '<p class="empty-note">Worst calls are listed for forecasts made 3 or 12 hours ahead. Pick one of those above.</p>'}</section>
       ${more("tech", "Technical results for specialists", techResults(e, s, a), "glass card span2")}
     </div></div>`;
 }
@@ -395,7 +448,7 @@ function techResults(e, s, a) {
     </div>`;
 }
 function relChart(rows) {
-  const W = 420, Hh = 260, P = { l: 38, r: 12, t: 10, b: 26 }, top = Math.max(0.1, ...rows.map(r => Math.max(r.pred, r.obs))) * 1.08;
+  const W = innerWidth < 600 ? 340 : 420, Hh = 260, P = { l: 38, r: 12, t: 10, b: 26 }, top = Math.max(0.1, ...rows.map(r => Math.max(r.pred, r.obs))) * 1.08;
   const X = v => P.l + v / top * (W - P.l - P.r), Y = v => P.t + (1 - v / top) * (Hh - P.t - P.b);
   const ticks = [0, 0.1, 0.2, 0.3, 0.4, 0.5].filter(v => v <= top);
   return `<svg class="chart" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Predicted against observed severe-delay rate">
@@ -406,7 +459,7 @@ function relChart(rows) {
     </svg><div class="legend label"><span><i style="background:var(--sky)"></i>Model, predicted vs observed</span><span><i style="background:var(--ink-3)"></i>Perfect calibration</span></div>`;
 }
 function stormLeadChart(rows) {
-  const W = 520, Hh = 240, P = { l: 34, r: 10, t: 12, b: 26 }, top = Math.ceil(Math.max(...rows.flatMap(r => [r.storm, r.clim, r.all])) / 5) * 5;
+  const W = innerWidth < 600 ? 340 : 520, Hh = 240, P = { l: 34, r: 10, t: 12, b: 26 }, top = Math.ceil(Math.max(...rows.flatMap(r => [r.storm, r.clim, r.all])) / 5) * 5;
   const gw = (W - P.l - P.r) / rows.length, bw = gw / 4, Y = v => P.t + (1 - v / top) * (Hh - P.t - P.b);
   const grid = []; for (let v = 0; v <= top; v += 5) grid.push(`<line class="grid" x1="${P.l}" x2="${W - P.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${P.l - 6}" y="${Y(v) + 4}" text-anchor="end">${v}</text>`);
   const g = rows.map((r, i) => { const x = P.l + i * gw + gw / 2;
@@ -421,13 +474,15 @@ function stormLeadChart(rows) {
 // ---------- tour (Torque Stripe's spotlight pattern) ----------
 const STEPS = [
   { title: "Welcome to Flowcast", text: "Flowcast predicts when bad weather will cut the number of planes that can land at Atlanta and Dallas–Fort Worth, 3 to 12 hours ahead. This is a replay of 2025: pick a moment, see what it would have said, then compare with what really happened." },
-  { sel: '[data-tour="answer"]', view: "outlook", title: "The answer", text: "Green means normal, amber means fewer landings, red means a big slowdown. Each bar is one hour, 3 to 12 hours ahead." },
+  { sel: '[data-tour="answer"]', view: "outlook", title: "The answer", text: "Blue means normal, amber means fewer landings, red means a big slowdown. Each bar is one hour, 3 to 12 hours ahead." },
   { sel: '[data-tour="ask"]', view: "outlook", title: "Pick an airport and a time", text: "The forecast only uses weather reports and flight data that existed at that moment." },
   { sel: '[data-tour="chips"]', view: "outlook", title: "Or replay a bad day", text: "The biggest slowdowns of 2025. Each one starts the forecast 6 hours before it happened." },
   { sel: '[data-tour="weather"]', view: "outlook", title: "Weather right now", text: "The latest airport weather report. The 3D scene shows it too: wind, cloud height, rain and lightning." },
   { sel: '[data-tab="eval"]', title: "Checked, not just claimed", text: "See how accurate the forecasts were on data the models never saw, including where they go wrong." },
 ];
+let tourFrom = null;   // focus goes back here when the tour closes
 function openTour(i = 0) {
+  if (!$("#overlay .tour")) tourFrom = document.activeElement;
   const s = STEPS[i]; if (s.view && S.view !== s.view) go(s.view);
   setTimeout(() => {
     const el = s.sel ? $(s.sel) : null; el?.scrollIntoView({ block: "nearest" });
@@ -441,12 +496,15 @@ function openTour(i = 0) {
     $("#overlay .tour-acts .pri")?.focus();
   }, 60);
 }
-function closeTour() { $("#overlay").innerHTML = ""; store.set("cr_tour_v2", "1"); }
+function closeTour() {
+  $("#overlay").innerHTML = ""; store.set("cr_tour_v2", "1");
+  (tourFrom?.isConnected && tourFrom !== document.body ? tourFrom : $("[data-tour-open]"))?.focus();   // re-renders can detach the opener
+}
 
 // ---------- events ----------
 const toAnswer = () => { if (innerWidth < 860) $("#answer-top")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-go],[data-tour-open],[data-tour-step],[data-tour-close],[data-ev],[data-sens],[data-reveal],[data-cam],[data-flight],[data-lead],[data-explain],[data-scroll]");
+  const t = e.target.closest("[data-go],[data-tour-open],[data-tour-step],[data-tour-close],[data-ev],[data-sens],[data-reveal],[data-cam],[data-flight],[data-lead],[data-explain],[data-scroll],[data-retry],[data-chips-more]");
   if (!t) return;
   const d = t.dataset;
   if (d.go) { e.preventDefault(); go(d.go); }
@@ -458,13 +516,15 @@ document.addEventListener("click", e => {
   else if ("reveal" in d) { S.reveal = !S.reveal; render(); }
   else if (d.cam) { S.cam = d.cam; stage?.setView(d.cam); document.querySelectorAll("[data-cam]").forEach(b => b.setAttribute("aria-pressed", b.dataset.cam === d.cam)); }
   else if (d.scroll) $(`#${d.scroll}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  else if (d.lead) { S.lead = +d.lead; S.ev = null; S.st = null; render(); ensure(S.view); }
+  else if (d.lead) { S.lead = +d.lead; S.ev = null; S.st = null; S.fail = null; render(); ensure(S.view); }
   else if ("explain" in d) {
     t.disabled = true; t.textContent = "Asking Claude…";
     api("explain", { airport: S.icao, t0: S.t0, sens: S.sens, thr: S.thr }).then(r => { S.expl = r.text; render(); })
       .catch(err => { toast(err.message); t.disabled = false; t.textContent = "Explain this forecast in plain English"; });
   }
   else if (d.flight) { S.sel = +d.flight; go("flights"); }
+  else if ("retry" in d) { S.fail = S.err = null; render(); S.out ? ensure(S.view) : forecast(); }
+  else if ("chipsMore" in d) { const c = t.parentElement; c.scrollTo({ left: c.classList.contains("end") ? 0 : c.scrollLeft + c.clientWidth * 0.8, behavior: "smooth" }); }
 });
 document.addEventListener("submit", e => {
   if (!e.target.matches(".askbar")) return;
@@ -476,16 +536,39 @@ document.addEventListener("change", e => {
   else if (e.target.matches("[data-thr]")) { S.thr = +e.target.value; forecast(); }
 });
 document.addEventListener("toggle", e => { const k = e.target.dataset?.k; if (k) S.open[e.target.open ? "add" : "delete"](k); }, true);   // keep details open across re-renders
-document.addEventListener("mouseover", e => { const el = e.target.closest("[data-hour]"); if (el) { stage?.highlight(+el.dataset.hour); el.classList.add("hot"); } });
-document.addEventListener("mouseout", e => { const el = e.target.closest("[data-hour]"); if (el && !el.contains(e.relatedTarget)) { stage?.highlight(null); el.classList.remove("hot"); } });
-document.addEventListener("keydown", e => { if (e.key === "Escape" && $("#overlay .tour")) closeTour(); });
+// hour bars: hover and keyboard focus both light that hour on the 3D ring
+const hot = (el, on) => { stage?.highlight(on ? +el.dataset.hour : null); el.classList.toggle("hot", on); };
+document.addEventListener("mouseover", e => { const el = e.target.closest("[data-hour]"); if (el) hot(el, true); });
+document.addEventListener("mouseout", e => { const el = e.target.closest("[data-hour]"); if (el && !el.contains(e.relatedTarget)) hot(el, false); });
+document.addEventListener("focusin", e => { if (e.target.matches?.("[data-hour]")) hot(e.target, true); });
+document.addEventListener("focusout", e => { if (e.target.matches?.("[data-hour]")) hot(e.target, false); });
+document.addEventListener("keydown", e => {
+  const tour = $("#overlay .tour");
+  if (tour && e.key === "Escape") closeTour();
+  else if (tour && e.key === "Tab") {   // keep focus inside the tour card
+    const b = [...tour.querySelectorAll("button")], i = b.indexOf(document.activeElement);
+    if (i < 0 || (e.shiftKey ? i === 0 : i === b.length - 1)) { e.preventDefault(); b.at(e.shiftKey ? -1 : 0).focus(); }
+  }
+  else if (e.target.matches?.("[data-hour]") && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {   // roving tab stop: Tab returns to the last hour visited
+    const n = e.target[e.key === "ArrowRight" ? "nextElementSibling" : "previousElementSibling"];
+    if (n) { e.target.tabIndex = -1; n.tabIndex = 0; n.focus(); }
+  }
+});
+document.addEventListener("scroll", e => { if (e.target.classList?.contains("chips")) chipCue(e.target); }, true);
+addEventListener("resize", () => chipCue());
 addEventListener("hashchange", () => { const h = location.hash.replace(/^#\/?/, "").replace("storms", "eval"); if (VIEWS.some(v => v[0] === h) && h !== S.view) go(h); });
 function paintAskButton() { const b = $(".askbar .glass-btn.pri"); if (b) { b.disabled = S.busy; b.textContent = S.busy ? "Loading…" : "Show forecast"; } }
 
 // ---------- boot ----------
 (async () => {
   const noTour = new URLSearchParams(location.search).has("notour");
-  try { S.meta = await api("meta"); } catch (e) { $("#view").innerHTML = `<div class="page"><p class="empty-note">Could not reach the dashboard API: ${esc(e.message)}. Start it with python dashboard/server.py.</p></div>`; return; }
+  // screen-reader announcements; made here, not in index.html, so a cached page can never lack them
+  document.body.insertAdjacentHTML("beforeend", '<div id="live" class="sr-only" aria-live="polite"></div><div id="alerts" class="sr-only" role="alert"></div>');
+  try { S.meta = await api("meta"); } catch (e) {
+    $("#view").innerHTML = `<div class="page"><div class="empty-note" role="alert"><p>Flowcast could not load its data. ${esc(e.message)}</p>
+      <p>Reload the page to try again. Running it yourself? Start the server with <span class="mono">python dashboard/server.py</span>.</p></div></div>`;
+    return;
+  }
   readUrl(); render();
   // the 3D stage is decoration: if WebGL or the CDN is unavailable the dashboard still works
   import("./stage.js").then(m => { stage = m.createStage($("#stage canvas"), $("#stage"), { zoom: innerWidth < 860 ? 4.4 : 3.3 }); stage.setActive(S.view === "outlook"); syncStage(false); })

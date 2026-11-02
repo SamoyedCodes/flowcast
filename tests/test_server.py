@@ -21,5 +21,12 @@ def test_outlook_is_strict_json_and_only_looks_ahead():
     assert all(2.5 <= f["h"] < 12.5 for f in o["flights"])
     assert [f["p"] for f in o["flights"]] == sorted((f["p"] for f in o["flights"]), reverse=True)
     assert S.parse_t0("2030-01-01T00") == S.TEST1 and S.parse_t0("2020-01-01T00") == S.TEST0
+    for bad in ("", None, "garbage"):
+        with pytest.raises(ValueError):
+            S.parse_t0(bad)
+    assert S.parse_thr(None) == 0.25 and S.parse_thr("0.4") == 0.4
+    for bad in ("nan", "5", "0", "abc"):
+        with pytest.raises(ValueError):
+            S.parse_thr(bad)
     for body in (S.history("KATL", S.TEST1), S.evaluation("KATL", 3), S.meta()):
         json.dumps(body, allow_nan=False)

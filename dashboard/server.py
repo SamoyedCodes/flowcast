@@ -118,7 +118,7 @@ def meta():
         airports.append({"icao": icao, "iata": iata, "name": AP.at[iata, "name"] if iata in AP.index else iata,
                          "tz": cfg["tz"], "runway_heading": cfg["runway_heading_deg"], "aar": cfg["aar"]})
         test = H[icao].loc[TEST0:][lambda d: d["aar_ratio"].notna()]
-        worst = test.groupby(test.index.floor("D"))["aar_ratio"].idxmin()
+        worst = test.groupby(test.index.tz_convert(cfg["tz"]).date)["aar_ratio"].idxmin()   # one per local day, so no twin chips
         for t in sorted(worst, key=lambda t: test.at[t, "aar_ratio"])[:5]:
             events.append({"icao": icao, "iata": iata, "t0": ts(max(t - pd.Timedelta(hours=6), TEST0)), "at": ts(t),
                            "aar": num(test.at[t, "aar"], 0), "ratio": num(test.at[t, "aar_ratio"], 2)})
@@ -235,7 +235,7 @@ def evaluation(icao, lead):
         out["failures"] = [] if fc is None else [
             {"kind": "missed" if r.kind == "missed_severe_delay" else "false alarm", "hub": C.AIRPORTS.get(r.airport, {}).get("iata", r.airport),
              "dir": r.direction, "other": r.other_airport, "carrier": r.carrier, "t": ts(pd.Timestamp(r.event_utc)),
-             "delay_min": num(r.delay_min, 0), "p": num(r.p, 3)} for r in fc.head(8).itertuples()]
+             "delay_min": num(r.delay_min, 0), "p": num(r.p, 3)} for r in fc[fc.airport == icao].itertuples()]
     tr = REP.get("aar_vs_traffic")
     if tr is not None:
         tr = tr[tr.airport == icao]
@@ -310,9 +310,24 @@ def explain(icao, t0, sens, thr):
 
 # ------------------------------------------------------------------ server
 def parse_t0(s):
-    t = pd.Timestamp((s or "").rstrip("Z"))
+    try:
+        t = pd.Timestamp((s or "").rstrip("Z"))
+    except ValueError:
+        t = pd.NaT
+    if pd.isna(t):   # a missing or empty time parses to NaT, not an error
+        raise ValueError("Could not read that time. Pick a date and hour from January to July 2025.")
     t = t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC")
     return min(max(t.floor("h"), TEST0), TEST1)
+
+
+def parse_thr(s):
+    try:
+        thr = float(s or 0.25)
+    except ValueError:
+        thr = -1.0
+    if not 0 < thr < 1:   # also catches nan, which would break the strict JSON reply
+        raise ValueError("The delay threshold must be a chance between 0 and 1, such as 0.25.")
+    return thr
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -321,6 +336,11 @@ class Handler(SimpleHTTPRequestHandler):
 
     def log_message(self, *a):
         pass
+
+    def end_headers(self):
+        if not self.path.startswith("/api/"):   # file names carry no version, so always revalidate (unchanged files answer 304)
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
 
     def send_json(self, code, body):
         data = json.dumps(body, allow_nan=False).encode()
@@ -343,8 +363,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json(200, meta_cached())
             if u.path == "/api/outlook":
                 t0 = parse_t0(q.get("t0"))
-                body = outlook(icao, t0, "cautious" if q.get("sens") == "cautious" else "balanced", float(q.get("thr", 0.25)))
-                return self.send_json(200, body) if body else self.send_json(404, {"error": f"No forecast issued at {ts(t0)}."})
+                body = outlook(icao, t0, "cautious" if q.get("sens") == "cautious" else "balanced", parse_thr(q.get("thr")))
+                return self.send_json(200, body) if body else self.send_json(404, {"error": "No forecast for this hour: the 2025 data has a gap here. Try an hour earlier or later."})
             if u.path == "/api/history":
                 return self.send_json(200, history(icao, parse_t0(q.get("t0"))))
             if u.path == "/api/eval":
@@ -353,7 +373,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json(200, storm(icao, int(q.get("lead", 3))))
             if u.path == "/api/explain":
                 return self.send_json(200, explain(icao, parse_t0(q.get("t0")), "cautious" if q.get("sens") == "cautious" else "balanced",
-                                                   float(q.get("thr", 0.25))))
+                                                   parse_thr(q.get("thr"))))
         except (ValueError, KeyError, IndexError) as e:
             return self.send_json(400, {"error": str(e)})
         except requests.RequestException as e:

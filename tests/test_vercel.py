@@ -137,4 +137,4 @@ def test_missing_forecast(api, monkeypatch):
 
     monkeypatch.setattr(server, "outlook", lambda *args: None)
     status, body = api("/api/outlook", t0="2025-03-15T06")
-    assert status == 404 and "No forecast issued" in body["error"]
+    assert status == 404 and "No forecast for this hour" in body["error"]
