@@ -8,10 +8,11 @@ Forecasts, **3 to 12 hours ahead**, for Atlanta (KATL) and Dallas/Fort Worth (KD
 2. the probability that a flight suffers a **severe delay (> 45 min)**, calibrated and scored by PR-AUC and Brier.
 
 Both are shown to an air-traffic duty manager in a web dashboard with history, flight-level drivers and
-plain-language recommendations. Built for **Autonomous SG 2026, AI & Aerospace track, Airbus Challenge #5**
+plain-language recommendations. The dashboard is written so a first-time reader can follow it: plain English and
+local airport times up front, the full technical evidence one click away, and a layout that works on phones. Built for **Autonomous SG 2026, AI & Aerospace track, Airbus Challenge #5**
 ("Predictive Airport Capacity and Weather Delay Risk"; brief in [`Problem Statements.md`](Problem%20Statements.md)).
 
-![Flowcast dashboard: ATL outlook with the 12-hour capacity ring, current METAR and delay radar](presentation/img/dashboard_outlook.jpg)
+![Flowcast dashboard: DFW forecast with a big slowdown from 3 PM to 1 AM, the hour-by-hour bar, current weather and the 3D airfield](presentation/img/dashboard_outlook.jpg)
 
 > The dashboard is a **replay of the held-out January–July 2025 test period**, not a live forecast. Models never saw 2025 data.
 
@@ -76,6 +77,10 @@ flowchart LR
 * **Dashboard.** [`dashboard/server.py`](dashboard/server.py) is a `http.server` handler with no framework, and
   [`api/index.py`](api/index.py) re-exports it as the Vercel function, so local and deployed behaviour are identical.
   The frontend is plain ES modules; three.js loads from a CDN import map, so there is no build step.
+  It has four views: **Forecast** (one plain answer, suggested actions with a glossary, and a landings chart),
+  **Flights** (each sampled flight's delay chance and its main reasons), **Past 30 days**, and **Accuracy** (plain
+  questions and failure cases first; RMSE, PR-AUC, calibration and storm-hour results under "Technical results for
+  specialists").
 
 ### API
 
@@ -84,7 +89,7 @@ All endpoints are `GET`, return JSON and take `airport=KATL|KDFW`.
 | Endpoint | Extra params | Returns |
 |---|---|---|
 | `/api/meta` | | Airports, replay window, the worst-capacity days to jump to |
-| `/api/outlook` | `t0` (UTC issue time), `sens=balanced\|cautious`, `thr` (risk threshold) | 3–12 h AAR forecast with range, current weather, at-risk flights, recommendations |
+| `/api/outlook` | `t0` (UTC issue time), `sens=balanced\|cautious`, `thr` (risk threshold) | 3–12 h AAR forecast with range, current weather, at-risk flights with plain-English drivers, recommendations |
 | `/api/history` | `t0` | Last 30 days of AAR and predicted vs observed delay rate, plus a weekday × hour low-capacity heatmap |
 | `/api/eval` | `lead` | Test-set metrics against baselines |
 | `/api/storm` | `lead` | Storm-hour results from the full-BTS pipeline |

@@ -34,7 +34,7 @@ const AIRLINES = { AA: "American", DL: "Delta", UA: "United", WN: "Southwest", B
 const HAZ = { thunder: "thunderstorms", low_vis: "low cloud or poor visibility", xwind: "strong crosswind on the runway", tail: "wind from behind on the runway" };
 const WX = { TS: "thunderstorm", SH: "showers", FZ: "freezing", RA: "rain", SN: "snow", DZ: "drizzle", BR: "mist", FG: "fog", HZ: "haze", GR: "hail", GS: "hail",
              PL: "ice pellets", UP: "rain or snow", SQ: "squalls", VC: "nearby", FU: "smoke" };
-const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+const COMPASS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
 
 // ---------- state ----------
 const S = { view: "outlook", meta: null, icao: "KATL", t0: "", sens: "balanced", thr: 0.25, reveal: true, out: null, hist: null, ev: null,
@@ -171,12 +171,12 @@ function weatherBody(w) {
   const CAT = { VFR: ["Good flying weather", "ok"], MVFR: ["Slightly reduced visibility", "warn"], IFR: ["Low cloud or poor visibility", "stop"], LIFR: ["Very low cloud or fog", "stop"] };
   const [say, tone] = CAT[w.category] || ["Conditions not reported", "mute"];
   const x = Math.abs(w.crosswind_kt ?? 0), c = w.ceiling_ft, v = w.vis_mi;
-  const wind = w.wind_kt == null ? "—" : w.wind_kt < 1 ? "Calm"
-    : `${w.wind_kt}${w.gust_kt ? `–${w.gust_kt}` : ""}<small>knots${w.wind_dir == null ? "" : ` from ${COMPASS[Math.round(w.wind_dir / 45) % 8]}`}</small>`;
+  const wind = w.wind_kt == null ? "—" : w.wind_kt < 1 ? "Calm" : `${w.wind_kt}${w.gust_kt ? `–${w.gust_kt}` : ""}<small>knots</small>`;
+  const windSub = [w.wind_kt >= 1 && w.wind_dir != null ? `From the ${COMPASS[Math.round(w.wind_dir / 45) % 8]}` : "", x >= 10 ? `${x} knots across the runway` : ""].filter(Boolean).join(", ");
   const tile = (l, val, t = "", sub = "") => `<div class="tile"><div class="label">${l}</div><div class="tv t-${t}">${val}</div>${sub}</div>`;
   return `<p class="wx-say"><span class="dot ${tone}"></span>${say}</p>
     <div class="tiles">
-      ${tile("Wind", wind, x >= 15 ? "stop" : x >= 10 ? "warn" : "", x >= 10 ? `<div class="label">${x} knots across the runway</div>` : "")}
+      ${tile("Wind", wind, x >= 15 ? "stop" : x >= 10 ? "warn" : "", windSub ? `<div class="label">${windSub}</div>` : "")}
       ${tile("Cloud base", c == null || c >= 12000 ? "High or none" : `${n0(c)}<small>ft</small>`, c != null && c < 1000 ? "stop" : c != null && c < 3000 ? "warn" : "")}
       ${tile("Visibility", v == null ? "—" : `${v >= 10 ? "10+" : v}<small>miles</small>`, v != null && v < 1 ? "stop" : v != null && v < 3 ? "warn" : "")}
       ${tile("Rain or storms", w.wx ? esc(wxText(w.wx)) : "None", w.thunder ? "stop" : w.wx ? "warn" : "mute")}
