@@ -31,7 +31,7 @@ export function createStage(cv, host, opts = {}) {
               lights: new T.PointsMaterial({ size: 0.07, transparent: true, opacity: 0.9 }),
               scan: new T.LineBasicMaterial({ transparent: true, opacity: 0 }),
               scanFill: new T.MeshBasicMaterial({ transparent: true, opacity: 0, side: T.DoubleSide, depthWrite: false }),
-              wind: new T.LineBasicMaterial({ transparent: true, opacity: 0.5 }), rain: new T.LineBasicMaterial({ transparent: true, opacity: 0.4 }),
+              wind: new T.LineBasicMaterial({ transparent: true, opacity: 0.5, vertexColors: true, depthWrite: false }), rain: new T.LineBasicMaterial({ transparent: true, opacity: 0.4 }),
               snow: new T.PointsMaterial({ size: 0.13, transparent: true, opacity: 0.95, depthWrite: false }),
               bolt: new T.LineBasicMaterial({ transparent: true, opacity: 0 }),
               hull: new T.MeshPhysicalMaterial({ color: 0x98a3b3, metalness: 0.6, roughness: 0.34, clearcoat: 0.5, clearcoatRoughness: 0.25, envMapIntensity: 0.9, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
@@ -206,10 +206,19 @@ export function createStage(cv, host, opts = {}) {
     windArrow.material.color.set(css("--navy"));
   }
 
-  // ---------- weather: wind streaks, precipitation, cloud deck at the ceiling, lightning ----------
+  // ---------- weather: wind streamlines, precipitation, cloud deck at the ceiling, lightning ----------
   let wx = { dir: null, kt: 0, gust: 0, ceil: null, vis: 10, precip: null, amount: 0, thunder: false };
-  const NW = 420, wPos = new Float32Array(NW * 6), wP = Array.from({ length: NW }, () => [rnd(-BOX, BOX), rnd(GROUND + 0.4, GROUND + 6.5), rnd(-BOX, BOX), rnd(0, 6.3)]);
-  const wGeo = new T.BufferGeometry(); wGeo.setAttribute("position", new T.BufferAttribute(wPos, 3)); scene.add(new T.LineSegments(wGeo, M.wind));
+  // a streamline is K points in the wind's own frame (a downwind, c across, h above ground); its tail fades and it fades in and out over its life
+  // the S-bend matters: seen end-on a straight horizontal streak foreshortens into a vertical stroke and reads as rain
+  const NW = 160, K = 16, wPos = new Float32Array(NW * (K - 1) * 6), wCol = new Float32Array(NW * (K - 1) * 8).fill(1);
+  const spawn = (p, age = 0) => { const r = 14 * Math.sqrt(Math.random()), t = rnd(0, 6.3); p[5] = rnd(2.5, 5); p[4] = age * p[5];
+    p[0] = r * Math.cos(t) - wx.kt * 0.07 * (p[5] - 2 * p[4]); p[1] = 0.1 + 2.2 * Math.random() ** 2; p[2] = r * Math.sin(t); p[3] = rnd(0, 6.3);   // a: born upwind so mid-life is over the field
+    const b = (wx.dir ?? (225 + 60 * Math.sin(performance.now() / 11000) + rnd(-45, 45))) * Math.PI / 180;   // VRB: each streak strays off a direction that wanders
+    p[6] = -Math.sin(b); p[7] = Math.cos(b); return p; };
+  const wP = Array.from({ length: NW }, () => spawn([], Math.random()));
+  const put = (v, x, y, z, al) => { wPos[v * 3] = x; wPos[v * 3 + 1] = y; wPos[v * 3 + 2] = z; wCol[v * 4 + 3] = al; };
+  const wGeo = new T.BufferGeometry(); wGeo.setAttribute("position", new T.BufferAttribute(wPos, 3)); wGeo.setAttribute("color", new T.BufferAttribute(wCol, 4));
+  scene.add(new T.LineSegments(wGeo, M.wind));
   const NR = 1400, rPos = new Float32Array(NR * 6), sPos = new Float32Array(NR * 3), rP = Array.from({ length: NR }, () => [rnd(-15, 15), rnd(GROUND, GROUND + 9), rnd(-15, 15), rnd(0, 6.3)]);
   const rGeo = new T.BufferGeometry(); rGeo.setAttribute("position", new T.BufferAttribute(rPos, 3)); const rain = new T.LineSegments(rGeo, M.rain); scene.add(rain);
   const sGeo = new T.BufferGeometry(); sGeo.setAttribute("position", new T.BufferAttribute(sPos, 3)); const snow = new T.Points(sGeo, M.snow); scene.add(snow);
@@ -243,7 +252,7 @@ export function createStage(cv, host, opts = {}) {
            ceil: now?.ceiling_ft != null && now.ceiling_ft < 12000 ? now.ceiling_ft : null, thunder: !!now?.thunder || /TS/.test(code),
            precip: /SN|SG|PL|IC|GS/.test(code) ? "snow" : /RA|DZ|SH|UP/.test(code) ? "rain" : null,
            amount: /\+/.test(code) ? 1 : /-|DZ/.test(code) ? 0.4 : 0.7 };
-    landDir = (now?.headwind_kt ?? 1) >= 0 ? 1 : -1; placeApproach();
+    landDir = (now?.headwind_kt ?? 1) >= 0 ? 1 : -1; placeApproach(); wP.forEach(p => spawn(p, Math.random()));
     deck.visible = wx.ceil != null; deck.position.y = cloudY();
         rain.visible = wx.precip === "rain"; snow.visible = wx.precip === "snow";
     const n = Math.round(NR * wx.amount); rGeo.setDrawRange(0, n * 2); sGeo.setDrawRange(0, n);
@@ -283,15 +292,21 @@ export function createStage(cv, host, opts = {}) {
     const b = (wx.dir ?? 225) * Math.PI / 180, ux = -Math.sin(b), uz = Math.cos(b), calm = wx.dir == null || wx.kt < 3;
     flyPlane(reduce ? 0.55 : (clock / 18) % 1, calm ? 0 : wx.kt, ux, uz);
     rabbit.position.set(...along(-(ALS - (ALS - 60) * ((clock * 2.2) % 1)) * upm, 0.03));
-    // wind: streaks drift downwind, gusts pulse their speed
-    M.wind.opacity = calm ? 0.2 : Math.min(0.85, 0.4 + wx.kt / 35);
-    for (let i = 0; i < NW; i++) {
-      const p = wP[i], s = calm ? 0.8 : wx.kt + (wx.gust > wx.kt ? (wx.gust - wx.kt) * (0.5 + 0.5 * Math.sin(clock * 1.7 + p[3])) : 0), v = s * 0.14;
-      if (anim) { p[0] += ux * v * dt; p[2] += uz * v * dt; p[0] = ((p[0] + BOX) % (2 * BOX) + 2 * BOX) % (2 * BOX) - BOX; p[2] = ((p[2] + BOX) % (2 * BOX) + 2 * BOX) % (2 * BOX) - BOX; }
-      const len = 0.6 + s * 0.09;
-      wPos.set([p[0], p[1], p[2], p[0] - ux * len, p[1], p[2] - uz * len], i * 6);
+    // wind: streamlines snake downwind and fade at the tail, more and longer as it blows harder; gust fronts sweep through downwind; calm draws none
+    const nw = wx.kt < 3 ? 0 : Math.min(NW, Math.round(20 + wx.kt * 4)), hk = Math.min(1, (cloudY() - GROUND) / 3.2);   // hk: stay under a low deck
+    M.wind.opacity = Math.min(0.9, 0.5 + wx.kt / 40); wGeo.setDrawRange(0, nw * (K - 1) * 2);
+    for (let i = 0; i < nw; i++) {
+      const p = wP[i], s = wx.kt + Math.max(0, wx.gust - wx.kt) * Math.max(0, Math.sin(clock * 1.3 - p[0] * 0.25)) ** 2;
+      if (anim) { p[0] += s * 0.14 * dt; if ((p[4] += dt) > p[5]) spawn(p); }
+      const len = 2 + s * 0.1, life = Math.sin(Math.PI * p[4] / p[5]);
+      for (let j = 0; j < K; j++) {   // point j ends segment j-1 (vertex o-1) and starts segment j (vertex o)
+        const o = (i * (K - 1) + j) * 2, t = j / (K - 1), a = p[0] - len * t, c = p[2] + 0.5 * Math.sin(a * 1.05 + p[3] + clock * 0.6);
+        const x = a * p[6] - c * p[7], y = GROUND + hk * (p[1] + 0.08 * Math.sin(a * 0.6 + p[3] * 2)), z = a * p[7] + c * p[6], al = life * (1 - t) ** 1.4;
+        if (j) put(o - 1, x, y, z, al);
+        if (j < K - 1) put(o, x, y, z, al);
+      }
     }
-    wGeo.attributes.position.needsUpdate = true;
+    wGeo.attributes.position.needsUpdate = wGeo.attributes.color.needsUpdate = true;
     if (wx.precip) {
       const top = cloudY(), drift = calm ? 0 : wx.kt * 0.04, snowy = wx.precip === "snow";
       for (let i = 0; i < NR; i++) { const p = rP[i];

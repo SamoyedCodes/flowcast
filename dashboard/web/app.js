@@ -172,7 +172,7 @@ function weatherBody(w) {
   const [say, tone] = CAT[w.category] || ["Conditions not reported", "mute"];
   const x = Math.abs(w.crosswind_kt ?? 0), c = w.ceiling_ft, v = w.vis_mi;
   const wind = w.wind_kt == null ? "—" : w.wind_kt < 1 ? "Calm" : `${w.wind_kt}${w.gust_kt ? `–${w.gust_kt}` : ""}<small>knots</small>`;
-  const windSub = [w.wind_kt >= 1 && w.wind_dir != null ? `From the ${COMPASS[Math.round(w.wind_dir / 45) % 8]}` : "", x >= 10 ? `${x} knots across the runway` : ""].filter(Boolean).join(", ");
+  const windSub = [!(w.wind_kt >= 1) ? "" : w.wind_dir == null ? "Direction varies" : `From the ${COMPASS[Math.round(w.wind_dir / 45) % 8]}`, x >= 10 ? `${x} knots across the runway` : ""].filter(Boolean).join(", ");
   const tile = (l, val, t = "", sub = "") => `<div class="tile"><div class="label">${l}</div><div class="tv t-${t}">${val}</div>${sub}</div>`;
   return `<p class="wx-say"><span class="dot ${tone}"></span>${say}</p>
     <div class="tiles">
