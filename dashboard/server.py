@@ -31,18 +31,31 @@ NAMES = {
     "rec_dep_mean_6h": "hub departure delays (6 h)", "rec_arr_mean_6h": "inbound delays (6 h)",
     "rec_dep_severe_24h": "recent severe departure delays", "rec_arr_severe_24h": "recent severe arrival delays",
     "aar_ratio_min_6h": "recent capacity dip", "aar_ratio_min_12h": "recent capacity dip", "aar_ratio_now": "current capacity",
-    "aar_ratio_mean_24h": "capacity last 24 h", "taf_aar_ratio": "TAF-forecast capacity", "taf_aar_worst_ratio": "TAF worst-case capacity",
-    "taf_aar": "TAF-forecast capacity", "taf_aar_worst": "TAF worst-case capacity", "temp_c": "temperature",
+    "aar_ratio_mean_24h": "capacity last 24 h", "taf_aar_ratio": "forecast capacity", "taf_aar_worst_ratio": "forecast worst-case capacity",
+    "taf_aar": "forecast capacity", "taf_aar_worst": "forecast worst-case capacity", "temp_c": "temperature",
+    "aar_ratio_now_d3h": "capacity trend", "is_weekend": "weekend", "to_other_hub": "flight between hubs", "sched_elapsed_min": "flight length",
+    "rec_arr_n_24h": "recent arrivals", "rec_arr_n_6h": "recent arrivals", "rec_dep_n_24h": "recent departures", "rec_dep_n_6h": "recent departures",
+    "rec_arr_severe_6h": "recent severe arrival delays", "rec_dep_severe_6h": "recent severe departure delays",
+    "wx_age_h": "weather report age", "wx_stale": "weather report age", "wx_obs_missing": "missing weather report",
+    "taf_age_h": "forecast age", "taf_available": "forecast available", "taf_has_prob": "forecast uncertainty",
+    "taf_has_tempo": "forecast uncertainty", "taf_ts_prob30": "chance of thunderstorms", "bts_missing": "missing traffic data",
     "bts_scheduled_departures": "airport departures scheduled", "bts_scheduled_arrivals": "airport arrivals scheduled",
     "bts_departures_previous_3h": "airport departures last 3 h", "bts_arrivals_previous_3h": "airport arrivals last 3 h",
     "bts_severe_departure_rate_previous_3h": "airport severe delays last 3 h",
 }
+# weather features by stem, so "taf_worst_xwind_kt" reads "forecast crosswind" and "slp_hpa_d3h" reads "air pressure trend"
+PLAIN = {"precip": "rain or snow", "xwind": "crosswind", "crosswind": "crosswind", "tail": "tailwind", "tailwind": "tailwind",
+         "headwind": "headwind", "thunder": "thunderstorms", "slp": "air pressure", "ceiling": "low cloud", "vis": "visibility",
+         "gust": "gusts", "wind": "wind", "peak": "strong wind", "fcat": "flight conditions", "flight": "flight conditions",
+         "winter": "snow or ice", "temp": "temperature", "dewpt": "humidity", "wxcode": "rain, snow or fog"}
 
 
 def nice(f):
     if f in NAMES:
         return NAMES[f]
-    return "TAF: " + f[4:].replace("_", " ") if f.startswith("taf_") else f.replace("_", " ")
+    stem = f.removeprefix("taf_").removeprefix("worst_").removeprefix("has_").split("_")[0]
+    word = PLAIN.get(stem, f.replace("_", " "))
+    return ("forecast " if f.startswith("taf_") else "") + word + (" trend" if f.endswith("_d3h") else "")
 
 
 def num(x, nd=1):
@@ -171,7 +184,7 @@ def outlook(icao, t0, sens, thr):
                    "hazards": advisory.hazards_for_hour(r._asdict())} for r in fc.itertuples()],
         "windows": [{"start": ts(w["start"]), "end": ts(w["end"]), "severity": w["severity"], "min_aar": num(w["min_aar"], 0),
                      "lo": num(w["min_aar_low"], 0), "hi": num(w["min_aar_high"], 0), "pct": num(w["pct_reduction"], 0),
-                     "confidence": w["confidence"], "hazards": [advisory.HAZARD_TEXT[z] for z in w["hazards"]],
+                     "confidence": w["confidence"], "hazards": [advisory.HAZARD_TEXT[z] for z in w["hazards"]], "codes": w["hazards"],
                      "advice": advisory.advice(w, n_high)} for w in wins],
         "flights": [{"id": int(r.flight_id), "dir": r.direction, "other": r.other_airport, "carrier": r.carrier,
                      "t": ts(r.event_utc), "h": num(r.h_ahead, 1), "p": num(r.p, 3), "level": str(advisory.risk_level([r.p])[0]),
