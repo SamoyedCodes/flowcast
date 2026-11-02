@@ -2,7 +2,7 @@
 
 ![Flowcast: the dashboard's 3D Atlanta airfield during the 6 April 2025 thunderstorm replay, with rain, an airliner on final and the 10-hour capacity ring in amber and blue](presentation/img/cover.jpg)
 
-**Live dashboard: [flowcast.benson.sg](flowcast.benson.sg)**
+**Live dashboard: [flowcast.benson.sg](https://flowcast.benson.sg/)**
 
 Forecasts, **3 to 12 hours ahead**, for Atlanta (KATL) and Dallas/Fort Worth (KDFW):
 
