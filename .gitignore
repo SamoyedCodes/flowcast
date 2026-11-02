@@ -45,3 +45,5 @@ jho/data/weather/
 !models/delay_lead[3-9].joblib
 !models/delay_lead1[0-2].joblib
 .vercel/
+
+.claude/
