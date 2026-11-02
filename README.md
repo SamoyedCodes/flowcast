@@ -1,6 +1,6 @@
 # Flowcast: airport capacity and severe-delay forecasting (ATL, DFW)
 
-**Live dashboard: [fin2704.vercel.app](https://fin2704.vercel.app/)**
+**Live dashboard: [flowcast.benson.sg](flowcast.benson.sg)**
 
 Forecasts, **3 to 12 hours ahead**, for Atlanta (KATL) and Dallas/Fort Worth (KDFW):
 
