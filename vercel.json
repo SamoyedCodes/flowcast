@@ -6,7 +6,7 @@
   "functions": {
     "api/index.py": {
       "maxDuration": 60,
-      "excludeFiles": "{.*/**,.vercelignore,_uv/**,*.{ipynb,md,py,toml,lock},tests/**,jho/**,presentation/**,dashboard/**,src/**,data/**,models/**,requirements-dev.txt}",
+      "excludeFiles": "{.*/**,.vercelignore,*.{ipynb,md,py},tests/**,jho/**,presentation/**,dashboard/**,src/**,data/**,models/**,requirements-dev.txt}",
       "includeFiles": "{dashboard/server.py,src/{__init__,config,advisory,train_delay}.py,data/processed/{hourly_weather.csv,aar_predictions.parquet,delay_test_predictions.parquet,delay_table.parquet},data/external/airports.dat,models/delay_lead{[3-9],1[0-2]}.joblib}"
     }
   },

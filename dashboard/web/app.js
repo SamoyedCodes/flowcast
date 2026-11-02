@@ -5,7 +5,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": 
 const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } } };
 async function api(path, q = {}) {
   const r = await fetch(`/api/${path}?${new URLSearchParams(q)}`), j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || r.statusText);
+  if (!r.ok) throw new Error(j.error || r.statusText || `HTTP ${r.status}`);
   return j;
 }
 
