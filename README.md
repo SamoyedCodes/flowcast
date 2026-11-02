@@ -1,5 +1,7 @@
 # Flowcast: airport capacity and severe-delay forecasting (ATL, DFW)
 
+![Flowcast: the dashboard's 3D Atlanta airfield during the 6 April 2025 thunderstorm replay, with rain, an airliner on final and the 10-hour capacity ring in amber and blue](presentation/img/cover.jpg)
+
 **Live dashboard: [flowcast.benson.sg](flowcast.benson.sg)**
 
 Forecasts, **3 to 12 hours ahead**, for Atlanta (KATL) and Dallas/Fort Worth (KDFW):
@@ -81,6 +83,16 @@ flowchart LR
   **Flights** (each sampled flight's delay chance and its main reasons), **Past 30 days**, and **Accuracy** (plain
   questions and failure cases first; RMSE, PR-AUC, calibration and storm-hour results under "Technical results for
   specialists").
+* **3D airfield.** Behind the Forecast view, [`dashboard/web/stage.js`](dashboard/web/stage.js) draws the airport in
+  three.js from its real OpenStreetMap runways, aprons and terminals. The scene is driven by the latest METAR: wind as
+  streamlines across the field, a cloud deck at the reported ceiling, fog thinned to the visibility, rain or snow, and
+  lightning when thunder is reported. An airliner flies a 3° glideslope to the landing runway, crabbing into the real
+  crosswind. Around the field, a ring of ten arcs shows the forecast hours (+3 h at north, clockwise), coloured
+  normal, reduced or severe. The camera can be dragged or switched to top and side views, and the scene stays still
+  for readers who prefer reduced motion.
+* **Honest replays.** The "Replay a bad day" chips jump to the five worst-capacity days at each airport, and "Show what really
+  happened" puts the observed landings next to the forecast, misses included. Alert settings travel in the URL, so a
+  shared link shows the same answer.
 
 ### API
 
