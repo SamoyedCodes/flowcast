@@ -1,4 +1,4 @@
-/* Capacity & Risk dashboard. Plain ES modules, no build step; data comes from dashboard/server.py.
+/* Flowcast dashboard. Plain ES modules, no build step; data comes from dashboard/server.py.
    Layout and interaction patterns follow Torque Stripe (MIT, (c) 2026 Aljabri Alam, github.com/aljabrialam/torque-stripe). */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -77,11 +77,11 @@ function toast(msg) {
 // ---------- shell ----------
 function go(v) { S.view = v; writeUrl(); render(); ensure(v); }
 function renderShell() {
-  $("#rail").innerHTML = `<a class="rail-logo" href="#/outlook" data-go="outlook" aria-label="Capacity and Risk, outlook">${LOGO}</a>`
+  $("#rail").innerHTML = `<a class="rail-logo" href="#/outlook" data-go="outlook" aria-label="Flowcast, outlook">${LOGO}</a>`
     + VIEWS.map(([id, l, ic]) => `<button class="rail-btn" data-go="${id}" data-tab="${id}"${S.view === id ? ' aria-current="page"' : ""}>${ic}<span>${l}</span></button>`).join("")
     + `<span class="rail-gap"></span><button class="rail-btn" data-tour-open aria-label="Show the guided tour">${I.help}<span>Tour</span></button>`;
   const m = S.meta, a = airport();
-  $("#topbar").innerHTML = `<span class="tb-item brand"><b>Capacity &amp; Risk</b></span>
+  $("#topbar").innerHTML = `<span class="tb-item brand"><b>Flowcast</b></span>
     <span class="tb-item hide-sm"><span class="dot ok"></span>Data · METAR · TAF · BTS · ${n0(m.flights)} test flights</span>
     <span class="tb-item hide-sm"><span class="dot"></span>Mode · replay of held-out 2025</span><span class="tb-sp"></span>
     <span class="tb-item hide-sm"><span class="dot"></span>Airport · <span class="mono">${a.iata}</span></span>
@@ -446,7 +446,7 @@ function stormLeadChart(rows) {
 
 // ---------- tour (Torque Stripe's spotlight pattern) ----------
 const STEPS = [
-  { title: "Capacity & Risk", text: "A replay of the held-out 2025 period at Atlanta and Dallas/Fort Worth. Pick an issue time and see what the models would have said 3 to 12 hours ahead, then reveal what happened." },
+  { title: "Flowcast", text: "A replay of the held-out 2025 period at Atlanta and Dallas/Fort Worth. Pick an issue time and see what the models would have said 3 to 12 hours ahead, then reveal what happened." },
   { sel: '[data-tour="ask"]', view: "outlook", title: "Pick an airport and an issue time", text: "Every forecast uses only the weather, TAFs and flights published before this time." },
   { sel: '[data-tour="chips"]', view: "outlook", title: "Jump to a notable event", text: "The worst capacity dips of 2025. Each chip issues the forecast six hours before the dip." },
   { sel: '[data-tour="capacity"]', view: "outlook", title: "Capacity, hour by hour", text: "Forecast arrival rate with its 80% range and the TAF-implied rate. Hover an hour to light its arc on the ring around the airfield." },

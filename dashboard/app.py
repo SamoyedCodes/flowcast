@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 from src import advisory, config as C  # noqa: E402
 from src import train_delay as TD  # noqa: E402
 
-st.set_page_config(page_title="Capacity & Risk", layout="wide", page_icon="✈")
+st.set_page_config(page_title="Flowcast", layout="wide", page_icon="✈")
 
 # ------------------------------------------------------------------ look: graphite glass, one blue accent
 ACCENT, OK, AMBER, STOP, MUTED = "#4c9dff", "#5fd38d", "#ffb547", "#ff6b5e", "#8a929c"
@@ -262,7 +262,7 @@ n_high = int((fl["p"] >= thr).sum())
 
 # ------------------------------------------------------------------ header + alert
 n_flights = dl_pred[dl_pred["lead_h"] == 3]["flight_id"].nunique()
-html(f'''<div class="topbar"><span class="brand"><span class="ring"></span>Capacity &amp; Risk</span>
+html(f'''<div class="topbar"><span class="brand"><span class="ring"></span>Flowcast</span>
   <span><span class="dot"></span>METAR · TAF · BTS · {n_flights:,} test flights</span>
   <span class="right"><span>Replay of held-out 2025</span><span class="mono">{t0:%Y-%m-%d %H:%MZ}</span></span></div>''')
 html(f'''<div class="hero"><h1>{cfg["iata"]} outlook</h1>

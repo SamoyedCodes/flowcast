@@ -1,4 +1,4 @@
-# Capacity & Risk: airport capacity and severe-delay forecasting (ATL, DFW)
+# Flowcast: airport capacity and severe-delay forecasting (ATL, DFW)
 
 **Live dashboard: [fin2704.vercel.app](https://fin2704.vercel.app/)**
 
@@ -11,7 +11,7 @@ Both are shown to an air-traffic duty manager in a web dashboard with history, f
 plain-language recommendations. Built for **Autonomous SG 2026, AI & Aerospace track, Airbus Challenge #5**
 ("Predictive Airport Capacity and Weather Delay Risk"; brief in [`Problem Statements.md`](Problem%20Statements.md)).
 
-![Capacity & Risk dashboard: ATL outlook with the 12-hour capacity ring, current METAR and delay radar](presentation/img/dashboard_outlook.jpg)
+![Flowcast dashboard: ATL outlook with the 12-hour capacity ring, current METAR and delay radar](presentation/img/dashboard_outlook.jpg)
 
 > The dashboard is a **replay of the held-out January–July 2025 test period**, not a live forecast. Models never saw 2025 data.
 

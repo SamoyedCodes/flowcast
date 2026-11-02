@@ -1,4 +1,4 @@
-"""Capacity & Risk web dashboard: a small JSON API over the pipeline outputs, plus the page in dashboard/web/.
+"""Flowcast web dashboard: a small JSON API over the pipeline outputs, plus the page in dashboard/web/.
 Replays the held-out 2025 period exactly like dashboard/app.py: the forecasts are what the models trained on data
 before 2025 would have said at the chosen issue time.   Run:  python dashboard/server.py   ->  http://localhost:8502
 """
@@ -351,5 +351,5 @@ class Handler(SimpleHTTPRequestHandler):
 meta_cached = lru_cache(maxsize=1)(meta)
 
 if __name__ == "__main__":
-    print(f"Capacity & Risk on http://localhost:{PORT}")
+    print(f"Flowcast on http://localhost:{PORT}")
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

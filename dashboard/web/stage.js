@@ -1,4 +1,4 @@
-/* Capacity & Risk stage: the airfield, its latest METAR and the next hours of capacity, drawn with three.js.
+/* Flowcast stage: the airfield, its latest METAR and the next hours of capacity, drawn with three.js.
    Adapted from Torque Stripe's inspection stage (MIT, (c) 2026 Aljabri Alam, github.com/aljabrialam/torque-stripe):
    the materials, lighting, lathe/panel helpers, narrow-body silhouette, camera and loop come from there.
    Decoration only: it shows the forecast and the weather, it never makes either. Not to scale. */
